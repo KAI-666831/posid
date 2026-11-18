@@ -1,0 +1,22 @@
+// 程式本體：先抓網路最新版，沒網路才用快取
+// 模型與引擎由 app 自己存在 posid-models-v1（只清自己 posid- 開頭的快取，不動同網域其他 app），這裡不碰、更新時也不刪
+const CACHE = 'posid-v1', KEEP = [CACHE, 'posid-models-v1'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './checks.js', './docs.js', './pair.js', './qrcode.js', './crew.js', './cont.js', './samples.js', './crops.js', './pos/index.html', './manifest.webmanifest', './icon-180.png', './ort/ort.wasm.min.js', './ort/ort-wasm-simd-threaded.mjs'])));
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => e.waitUntil(
+  caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('posid-') && !KEEP.includes(k)).map(k => caches.delete(k)))).then(() => self.clients.claim())
+));
+self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  if (url.origin !== location.origin) return;
+  if (/\.(onnx|wasm)$|ppocrv5_dict/.test(url.pathname)) {          // 大檔：先看模型快取
+    e.respondWith(caches.open('posid-models-v1').then(c => c.match(e.request)).then(hit => hit || fetch(e.request)));
+    return;
+  }
+  e.respondWith(fetch(e.request.url, { cache:'no-store' }).then(res => {   // 不吃瀏覽器快取，每次拿最新版
+    const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return res;
+  }).catch(() => caches.match(e.request)));
+});

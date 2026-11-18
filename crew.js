@@ -1,0 +1,215 @@
+// ===== 船員名冊 + 進出港人員名單 =====
+const CREW_KEY = 'idscan_crew', SHIP_KEY = 'idscan_ship';
+const loadCrew = () => { try { return JSON.parse(localStorage.getItem(CREW_KEY)) || []; } catch { return []; } };
+const saveCrew = a => { try { localStorage.setItem(CREW_KEY, JSON.stringify(a)); } catch {} };
+const isForeign = r => r.foreign === true || r.type === 'arc' || r.type === 'passport';
+
+// 性別：身分證/統一證號第二碼 1、8 男；2、9 女
+function inferSex(r) {
+  if (r.sex) return r.sex;
+  const id = (r.idno || '').toUpperCase();
+  if (/^[A-Z][18]/.test(id)) return '男';
+  if (/^[A-Z][29]/.test(id)) return '女';
+  return '';
+}
+// 名單上的寫法：本國人用中文名、民國生日、身分證；外籍用「英文名 中文名」、西元生日、護照號碼
+function formName(r) { return isForeign(r) ? [r.nameEn, r.name].filter(Boolean).join(' ') : (r.name || r.nameEn || ''); }
+function formId(r)   { return isForeign(r) ? (r.ppno || r.idno || '') : (r.idno || r.ppno || ''); }
+function formBirth(r) {
+  const b = (r.birth || '').trim();
+  let m = b.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+  if (m) {
+    if (!isForeign(r)) return [m[1]-1911, +m[2], +m[3]];          // 本國人存成西元的，轉回民國
+    return [m[1], +m[2], +m[3]];
+  }
+  m = b.match(/^(\d{1,3})[\/.](\d{1,2})[\/.](\d{1,2})$/);
+  if (m) {
+    if (isForeign(r)) return [+m[1]+1911, +m[2], +m[3]];
+    return [+m[1], +m[2], +m[3]];
+  }
+  return ['', '', ''];
+}
+function crewRole(r) { return r.role || (isForeign(r) ? '船員(外)' : '船員'); }
+
+// ---------- 名冊畫面 ----------
+function renderCrew() {
+  const a = loadCrew();
+  $('crewCount').textContent = a.length;
+  $('crewToday').textContent = a.filter(r => r.today).length;
+  $('crewList').innerHTML = a.map((r, i) => `
+    <label class="crew-row">
+      <input type="checkbox" ${r.today ? 'checked' : ''} onchange="crewToggle(${i}, this.checked)">
+      <span class="cr-name">${esc(formName(r))}</span>
+      <span class="cr-id">${esc(formId(r))}</span>
+      <a href="#" onclick="crewDel(${i});return false">刪</a>
+    </label>`).join('') || '<div style="color:var(--muted);font-size:14px">名冊是空的。掃描船員證件後按「加入船員名冊」，或匯入名冊檔。</div>';
+}
+function crewToggle(i, on) { const a = loadCrew(); a[i].today = on; saveCrew(a); renderCrew(); }
+function crewAll(on) { const a = loadCrew(); a.forEach(r => r.today = on); saveCrew(a); renderCrew(); }
+function crewDel(i) { const a = loadCrew(); if (!confirm(`從名冊刪除 ${formName(a[i])}？`)) return; a.splice(i, 1); saveCrew(a); renderCrew(); }
+function addFormToCrew() {
+  const r = collectRecord();
+  if (!hasData(r)) { alert('表單沒有資料'); return; }
+  r.sex = inferSex(r); r.today = true;
+  const a = loadCrew();
+  const key = formId(r);
+  const k = a.findIndex(x => key && formId(x) === key);
+  if (k >= 0) a[k] = { ...a[k], ...r }; else a.push(r);
+  saveCrew(a); renderCrew();
+  clearFields(); $('cardView').style.display = 'none';
+  toast(`已加入船員名冊：${formName(r)}`);
+}
+
+// 匯入名冊 CSV：類別(本國/外籍), 中文姓名, 英文姓名, 性別, 出生年月日, 證號, 備註
+function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"' && text[i+1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i+1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+async function importCrew(file) {
+  if (!file) return;
+  const rows = parseCsv(await file.text());
+  const head = rows.shift() || [];
+  const col = name => head.findIndex(h => h.includes(name));
+  const ci = { kind: col('類別'), name: col('中文'), en: col('英文'), sex: col('性別'), birth: col('出生'), no: col('證號'), role: col('備註'), today: col('出海') };
+  const a = loadCrew(); let n = 0;
+  for (const x of rows) {
+    const g = k => ci[k] >= 0 ? (x[ci[k]] || '').trim() : '';
+    const foreign = /外/.test(g('kind'));
+    const r = { type: foreign ? 'passport' : 'id', foreign, name: g('name'), nameEn: g('en').toUpperCase(), sex: g('sex'), birth: g('birth'), role: g('role'), today: /^(是|v|y|1|○|o)$/i.test(g('today')) };
+    if (foreign) r.ppno = g('no').toUpperCase(); else r.idno = g('no').toUpperCase();
+    if (!r.name && !r.nameEn) continue;
+    const k = a.findIndex(y => formId(y) && formId(y) === formId(r));
+    if (k >= 0) a[k] = { ...a[k], ...r }; else a.push(r);
+    n++;
+  }
+  saveCrew(a); renderCrew();
+  toast(`匯入 ${n} 位船員`);
+}
+
+// ---------- 進出港人員名單 ----------
+function manifestData() {
+  const crew = loadCrew().filter(r => r.today);
+  const pax = $('incPax').checked ? load() : [];
+  return { title: ($('shipName').value.trim() || '') + '進出港人員名單', crew, pax };
+}
+function sexCell(s) {
+  return `<span class="${s === '男' ? 'circ' : ''}">男</span>&ensp;<span class="${s === '女' ? 'circ' : ''}">女</span>`;
+}
+function rowHtml(no, r) {
+  if (!r) return `<tr><td>${no}</td><td></td><td>${sexCell('')}</td><td class="bd">/&emsp;/&emsp;/</td><td></td><td></td></tr>`;
+  const [y, m, d] = formBirth(r), nm = formName(r);
+  return `<tr><td>${no}</td><td class="${nm.length > 12 ? 'sm' : ''}">${esc(nm)}</td><td>${sexCell(inferSex(r))}</td>
+    <td class="bd">${y}&nbsp;/&nbsp;${m}&nbsp;/&nbsp;${d}</td><td>${esc(formId(r))}</td><td>${esc(r.role !== undefined ? crewRole(r) : '')}</td></tr>`;
+}
+function openManifest() {
+  try { localStorage.setItem(SHIP_KEY, $('shipName').value.trim()); } catch {}
+  const { title, crew, pax } = manifestData();
+  const paxRows = Math.max(23, pax.length);
+  let h = `<div class="mf-title">${esc(title)}</div><table class="mf"><thead><tr><th>編號</th><th>姓名</th><th>性別</th><th>出生&ensp;年&ensp;月&ensp;日</th><th>身分證字號</th><th>備註</th></tr></thead><tbody>`;
+  crew.forEach((r, i) => h += rowHtml(i + 1, { ...r, role: crewRole(r) }));
+  h += `</tbody><tbody class="pax">`;
+  for (let i = 0; i < paxRows; i++) h += rowHtml(i + 1, pax[i] ? { ...pax[i], role: undefined } : null);
+  h += `</tbody></table>`;
+  $('mfPage').innerHTML = h;
+  $('manifest').style.display = 'block'; $('manifest').scrollTop = 0;
+}
+function closeManifest() { $('manifest').style.display = 'none'; }
+
+// 存成圖片（方便用 LINE 傳或直接列印）
+function renderManifestCanvas() {
+  const { title, crew, pax } = manifestData();
+  const rows = [...crew.map((r, i) => [i + 1, { ...r, role: crewRole(r) }, 'crew']),
+                ...Array.from({ length: Math.max(23, pax.length) }, (_, i) => [i + 1, pax[i] ? { ...pax[i], role: undefined } : null, 'pax'])];
+  // 直接畫成 A4 直式比例，列高依人數拉高到填滿整頁（印出來不會下面空一大片）
+  const W = 2000, cols = [0.07, 0.22, 0.11, 0.22, 0.24, 0.14], X0 = 50, TW = W - 100, TOP = 190, BOT = 40;
+  const A4H = Math.round(W * 297 / 210);
+  const RH = Math.max(52, Math.floor((A4H - TOP - BOT) / (rows.length + 1)));
+  const H = Math.max(A4H, TOP + RH * (rows.length + 1) + BOT);
+  const FS = Math.round(Math.min(58, RH * 0.5));          // 字體跟著列高放大
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#000'; g.strokeStyle = '#000';
+  const F = '"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif';
+  g.font = `600 76px ${F}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(title, W / 2, 100);
+  const xs = [X0]; cols.forEach(w => xs.push(xs[xs.length - 1] + w * TW));
+  const cell = (txt, i, y, size = FS) => {
+    g.font = `${size}px ${F}`; let s = size;
+    while (g.measureText(txt).width > (xs[i+1] - xs[i]) - 16 && s > 18) { s -= 2; g.font = `${s}px ${F}`; }
+    g.fillText(txt, (xs[i] + xs[i+1]) / 2, y + RH / 2);
+  };
+  const line = (x1, y1, x2, y2, w = 2) => { g.lineWidth = w; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+  ['編號', '姓名', '性別', '出生 年 月 日', '身分證字號', '備註'].forEach((t, i) => cell(t, i, TOP));
+  rows.forEach(([no, r, kind], k) => {
+    const y = TOP + RH * (k + 1);
+    cell(String(no), 0, y);
+    if (r) {
+      cell(formName(r), 1, y);
+      const [yy, mm, dd] = formBirth(r); cell(`${yy} / ${mm} / ${dd}`, 3, y);
+      cell(formId(r), 4, y); if (r.role !== undefined) cell(crewRole(r), 5, y);
+    } else cell('/   /   /', 3, y);
+    const sx = r ? inferSex(r) : '';
+    const cx = (xs[2] + xs[3]) / 2;
+    const off = FS * 0.95;
+    g.font = `${FS}px ${F}`; g.fillText("男", cx - off, y + RH / 2); g.fillText("女", cx + off, y + RH / 2);
+    if (sx) { g.lineWidth = 3; g.beginPath(); g.arc(cx + (sx === "男" ? -off : off), y + RH / 2, FS * 0.68, 0, Math.PI * 2); g.stroke(); }
+  });
+  const yEnd = TOP + RH * (rows.length + 1);
+  for (let k = 0; k <= rows.length + 1; k++) {
+    const y = TOP + RH * k;
+    const thick = k === 0 || k === rows.length + 1 || (k === crew.length + 1 && crew.length);
+    line(X0, y, X0 + TW, y, thick ? 4 : 2);
+  }
+  xs.forEach((x, i) => line(x, TOP, x, yEnd, i === 0 || i === xs.length - 1 ? 4 : 2));
+  return { canvas: c, title };
+}
+const stampToday = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; };
+// 檔名：2026-11-14_0407_出船乘客名單
+const manifestName = ext => { const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}_出船乘客名單.${ext}`; };
+function shareFile(blob, name, type, title) {
+  const file = new File([blob], name, { type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file] }).catch(() => {});   // 只分享檔案；加標題 iPhone 會多存一個「文字」檔
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+}
+function manifestImage() {
+  const { canvas, title } = renderManifestCanvas();
+  canvas.toBlob(b => shareFile(b, manifestName('png'), 'image/png', title), 'image/png');
+}
+
+// 自己組一個 A4 PDF（把名單圖放進去），iPhone 主畫面 app 不能用網頁列印，所以改用分享
+function manifestPdf() {
+  const { canvas, title } = renderManifestCanvas();
+  canvas.toBlob(async b => {
+    const jpg = new Uint8Array(await b.arrayBuffer());
+    const PW = 595.28, PH = 841.89, M = 12;
+    const s = Math.min((PW - 2*M) / canvas.width, (PH - 2*M) / canvas.height);
+    const w = canvas.width * s, h = canvas.height * s, x = (PW - w) / 2, y = PH - M - h;
+    const enc = new TextEncoder(), parts = [], offs = [];
+    let len = 0;
+    const push = p => { const u = typeof p === 'string' ? enc.encode(p) : p; parts.push(u); len += u.length; };
+    const obj = (n, body) => { offs[n] = len; push(`${n} 0 obj\n`); body(); push('\nendobj\n'); };
+    push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+    const content = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q`;
+    obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'));
+    obj(2, () => push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'));
+    obj(3, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`));
+    obj(4, () => { push(`<< /Length ${content.length} >>\nstream\n`); push(content); push('\nendstream'); });
+    obj(5, () => { push(`<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); push(jpg); push('\nendstream'); });
+    const xref = len;
+    let x2 = 'xref\n0 6\n0000000000 65535 f \n';
+    for (let n = 1; n <= 5; n++) x2 += String(offs[n]).padStart(10, '0') + ' 00000 n \n';
+    push(x2 + `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+    shareFile(new Blob(parts, { type: 'application/pdf' }), manifestName('pdf'), 'application/pdf', title);
+  }, 'image/jpeg', 0.92);
+}
