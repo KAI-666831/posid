@@ -65,7 +65,7 @@ async function openContinuous(grp) {
   if (!grp || !grp.want) grp = null;
   unlockAudio();
   await openCamera();
-  if (!stream) { if (grp && typeof groupDone === 'function') groupDone(0, grp.want); return; }
+  if (!stream) { if (grp && typeof groupDone === 'function' && !(typeof duoRole === 'function' && duoRole() === 'scan')) groupDone(0, grp.want, grp); return; }
   let base = 'auto'; try { base = localStorage.getItem('idscan_cont_base') || 'auto'; } catch {}
   cont = { base, state: 'seek', prev: null, still: 0, sig: null, count: 0, busy: false, audio: contAudio, fails: 0, grp, got: 0 };
   $('shutter').style.display = 'none';
@@ -80,7 +80,8 @@ async function openContinuous(grp) {
 function contTopUI() {
   if (!cont) return;
   const top = document.querySelector('#contBar .cb-top');
-  if (cont.grp) top.innerHTML = `本組 <b>${cont.got}</b> / ${cont.grp.want} 位${cont.grp.desc ? '　<span style="opacity:.8">' + esc(cont.grp.desc) + '</span>' : ''}`;
+  const more = typeof duoQ !== 'undefined' && duoRole() === 'scan' ? duoQ.length - 1 : 0;
+  if (cont.grp) top.innerHTML = `本組 <b>${cont.got}</b> / ${cont.grp.want} 位${cont.grp.desc ? '　<span style="opacity:.8">' + esc(cont.grp.desc) + '</span>' : ''}${more > 0 ? `<br><span style="color:#fde047">後面還有 ${more} 組在排隊</span>` : ''}`;
   else top.innerHTML = `已存 <b id="contCount">${cont.count}</b> 筆`;
 }
 // 本組多一位（新存檔或之前就存過）；掃滿自動回收銀
@@ -88,6 +89,7 @@ function groupGot() {
   if (!cont || !cont.grp) return;
   cont.got++; contTopUI();
   if (cont.got >= cont.grp.want) {
+    if (typeof duoAdvance === 'function' && duoAdvance()) return;   // 掃描機：直接接下一組
     cont.state = 'done';
     contUI(`✓ ${cont.grp.want} 位都掃好了，回到收銀…`, '#16a34a');
     setTimeout(() => { if (cont && cont.state === 'done') stopContinuous(true); }, 1300);
@@ -95,7 +97,7 @@ function groupGot() {
 }
 // 取消／完成按鈕
 function contFinish() {
-  if (cont && cont.grp && cont.got < cont.grp.want && !confirm(`這組還有 ${cont.grp.want - cont.got} 位沒掃，確定回收銀？`)) return;
+  if (cont && cont.grp && cont.got < cont.grp.want && !confirm(`這組還有 ${cont.grp.want - cont.got} 位沒掃，確定結束這組？`)) return;
   stopContinuous();
 }
 function stopContinuous() {
@@ -107,7 +109,7 @@ function stopContinuous() {
   $('contBar').style.display = 'none'; $('contRecent').style.display = 'none'; $('contTypes').style.display = 'none'; $('frame').style.borderColor = '#22c55e';
   closeOverlay();
   setType(TYPES[docType] ? docType : 'id');
-  if (grp) { if (typeof groupDone === 'function') groupDone(got, grp.want); return; }
+  if (grp) { if (typeof groupDone === 'function') groupDone(got, grp.want, grp); return; }
   if (n) toast(`連續掃描完成，共存了 ${n} 筆`);
 }
 

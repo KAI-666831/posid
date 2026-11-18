@@ -1,8 +1,8 @@
 // 程式本體：先抓網路最新版，沒網路才用快取
 // 模型與引擎由 app 自己存在 posid-models-v1（只清自己 posid- 開頭的快取，不動同網域其他 app），這裡不碰、更新時也不刪
-const CACHE = 'posid-v1', KEEP = [CACHE, 'posid-models-v1'];
+const CACHE = 'posid-v2', KEEP = [CACHE, 'posid-models-v1'];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './checks.js', './docs.js', './pair.js', './qrcode.js', './crew.js', './cont.js', './samples.js', './crops.js', './pos/index.html', './manifest.webmanifest', './icon-180.png', './ort/ort.wasm.min.js', './ort/ort-wasm-simd-threaded.mjs'])));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './checks.js', './docs.js', './pair.js', './qrcode.js', './crew.js', './cont.js', './duo.js', './samples.js', './crops.js', './pos/index.html', './manifest.webmanifest', './icon-180.png', './ort/ort.wasm.min.js', './ort/ort-wasm-simd-threaded.mjs'])));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => e.waitUntil(

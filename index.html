@@ -95,6 +95,11 @@
   #posView iframe { width:100%; height:100%; border:0; display:block; }
   body.tab-pos #idView { display:none; }
   body:not(.tab-pos) #posView { display:none; }
+  .duo-tip { font-size:14px; color:var(--muted); line-height:1.5; margin-bottom:6px; }
+  .duo-tip b { color:var(--fg); }
+  .duo-code { font-size:38px; font-weight:800; letter-spacing:4px; text-align:center; margin:8px 0; font-variant-numeric:tabular-nums; }
+  .duo-in { width:100%; padding:12px; font-size:24px; letter-spacing:3px; text-align:center; border-radius:10px; border:1px solid #ccc; margin-bottom:8px; text-transform:uppercase; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
   #toast { position:fixed; left:14px; right:14px; bottom:calc(env(safe-area-inset-bottom) + 16px); z-index:40; background:#16a34a; color:#fff;
            border-radius:12px; padding:14px; font-size:16px; font-weight:600; opacity:0; transform:translateY(20px); transition:.25s; pointer-events:none; }
   #toast.show { opacity:1; transform:none; } #toast.bad { background:#dc2626; }
@@ -149,6 +154,14 @@
 <div id="tabs"><button data-tab="pos" class="on">🧾 收銀</button><button data-tab="id">🪪 證件／名單</button></div>
 <div id="posView"><iframe src="pos/index.html" title="收銀"></iframe></div>
 <div id="idView">
+<div class="card" id="duoCard">
+  <b>雙機模式</b>
+  <div id="duoRoles" class="seg" style="margin:8px 0">
+    <button data-r="solo">單機</button><button data-r="pos">收銀機</button><button data-r="scan">掃描機</button>
+  </div>
+  <div id="duoBody"></div>
+</div>
+
 <h1>身分證辨識</h1>
 <div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-a</span></div>
 
@@ -315,6 +328,7 @@
 <script src="pair.js"></script>
 <script src="crew.js"></script>
 <script src="cont.js"></script>
+<script src="duo.js"></script>
 <script src="samples.js"></script>
 <script src="crops.js"></script>
 <script>
@@ -942,15 +956,20 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab
 // 收銀結帳 → 直接進連續掃描，掃滿人數自動回收銀
 window.addEventListener('message', e => {
   if (e.origin !== location.origin || !e.data || e.data.type !== 'posid-scan') return;
+  if (typeof duoCheckout === 'function' && duoCheckout(e.data)) return;   // 雙機：交給掃描機
   if (cont) return;
   openContinuous({ want: e.data.n, order: e.data.order, desc: e.data.desc || '' });
 });
 // 掃完一組（或按完成）：回到收銀頁
-function groupDone(n, want) {
-  render(); showTab('pos');
+function groupDone(n, want, grp) {
+  render();
+  if (typeof duoRole === 'function' && duoRole() === 'scan') { duoFinish(grp, n); return; }   // 掃描機：留在這頁等下一組
+  showTab('pos');
   const f = document.querySelector('#posView iframe');
   try { f.contentWindow.postMessage({ type:'posid-done', n, want }, location.origin); } catch {}
 }
+
+if (!dispPair) { duoConnect(); duoRender(); duoWake(); if (duoRole() === 'scan') showTab('id'); }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache:'none' }).then(r => r.update()).catch(()=>{});
 </script>
