@@ -201,14 +201,6 @@
 </div>
 
 <div class="card">
-  <b>辨識樣本（除錯用）</b>
-  <label class="crew-row" style="border:0"><input type="checkbox" id="sampleOn" onchange="try{localStorage.setItem('idscan_samples_on', this.checked ? '1' : '0')}catch{}"> 自動保存每次辨識的證件畫面（最近 80 張，只存在這支手機）</label>
-  <div style="font-size:14px;margin-bottom:6px">目前 <b id="sampleCount">0</b> 張</div>
-  <button class="sec" onclick="exportSamples()">匯出樣本 ZIP（傳給開發者）</button>
-  <button class="danger" onclick="clearSamples()">刪除所有樣本</button>
-</div>
-
-<div class="card">
   <b>雙機確認</b>
   <div id="pairState" style="font-size:14px;margin:6px 0 4px">尚未配對副機</div>
   <button class="sec" id="pairBtn" onclick="openPairModal()">配對副機（給客人看的手機）</button>
@@ -937,7 +929,8 @@ setType('id');
 render();
 try { $('shipName').value = localStorage.getItem(SHIP_KEY) || '大益娛樂漁船(CT3-6283)'; } catch {}
 renderCrew();
-renderSamples();
+// 辨識樣本功能已移除：清掉以前存的樣本照片
+try { indexedDB.deleteDatabase(SAMPLE_DB); } catch {}
 const dispPair = displayMode();
 if (dispPair) dispStart(dispPair);            // 這支是副機：只顯示客人確認畫面
 else {

@@ -11,7 +11,7 @@ async function sampleTx(mode, fn) {
   const db = await sdb();
   return new Promise((ok, no) => { const t = db.transaction('s', mode); const st = t.objectStore('s'); const res = fn(st); t.oncomplete = () => ok(res && res.result !== undefined ? res.result : res); t.onerror = () => no(t.error); });
 }
-const samplesOn = () => { try { return localStorage.getItem('idscan_samples_on') !== '0'; } catch { return true; } };
+const samplesOn = () => false;   // 收銀＋證件版不保存辨識樣本
 
 async function saveSample(card, log, fields) {
   if (!samplesOn()) return;
@@ -25,6 +25,7 @@ async function saveSample(card, log, fields) {
   } catch (e) { console.log('sample', e); }
 }
 async function renderSamples() {
+  if (!$('sampleCount')) return;
   try { const n = (await sampleTx('readonly', st => st.count())); $('sampleCount').textContent = n; } catch { $('sampleCount').textContent = '?'; }
   $('sampleOn').checked = samplesOn();
 }
