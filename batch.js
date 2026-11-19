@@ -110,6 +110,7 @@ async function batchOne(it, b) {
     // 兩種讀法都跑（專用讀法＋文字標籤），對得上才算有把握；對不上的欄位標「請核對」
     const q = parseIdLines(idLines); delete q._byLabel;
     if (cb) { const nm = await refineIdName(idLines, idCard); if (nm) q.name = nm; }
+    if (q.name) q.name = toTrad(q.name);
     await runOcr(idCard);
     const pr = collectRecord();
     const un = new Set(lastUnsure);
@@ -123,6 +124,17 @@ async function batchOne(it, b) {
       if (okA && okB) { r[k] = bq; if (a !== bq) un.add(k); else un.delete(k); }
       else if (okA || okB) { r[k] = okB ? bq : a; if (k === 'name') un.add(k); else un.delete(k); }
       else { r[k] = ''; un.add(k); }
+    }
+    // 兩種讀法都沒讀到號碼：在整張照片的字裡找「姓名」右下方、最靠右下角的（標請核對）
+    if (!validId(r.idno || '')) {
+      const nl = lines.find(L => /^姓/.test(L.t.replace(/\s/g, '')) && L.x0 < 0.5);
+      const c2 = findIds(lines).filter(x => !nl || (x.L.cy > nl.cy && x.L.cx > nl.cx)).sort((a, b) => (b.L.cx + b.L.cy) - (a.L.cx + a.L.cy))[0];
+      if (c2) { r.idno = c2.v; un.add('idno'); }
+      else {
+        // 讀到像號碼的字但檢查碼不對（有一個字讀錯）：用模型的「第二選擇」逐字試，剛好只有一種改法對得上才用（標請核對）
+        const shaped = lines.filter(L => /[A-Z][12A-D89]\d{8}/.test(L.t.replace(/\s/g, '').toUpperCase()) && (!nl || (L.cy > nl.cy && L.cx > nl.cx)));
+        for (const L of shaped) { const v = await fixIdByAlt(card, L); if (v) { r.idno = v; un.add('idno'); break; } }
+      }
     }
     if (r.birth) r.birthAd = rocToAd(r.birth).replace('西元 ', '');
     r.sex = $('sex').value || inferSex(r);
@@ -155,23 +167,66 @@ async function batchOne(it, b) {
   }
 }
 
+// 號碼檢查碼不對：重讀那一條，看每個字模型的第二選擇；只有「剛好一種」單字改法能過檢查碼才採用
+async function fixIdByAlt(img, L) {
+  const W = img.width, H = img.height;
+  const x0 = Math.max(0, L.x0 - 0.01), x1 = Math.min(1, L.x1 + 0.01), y0 = Math.max(0, L.y0 - 0.005), y1 = Math.min(1, L.y1 + 0.005);
+  const sw = (x1 - x0) * W, sh = (y1 - y0) * H, h = 48, w = Math.max(16, Math.round(sw * h / sh));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, x0 * W, y0 * H, sw, sh, 0, 0, w, h);
+  const px = ctx.getImageData(0, 0, w, h).data, n = h * w, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { f[i] = px[i * 4] / 127.5 - 1; f[n + i] = px[i * 4 + 1] / 127.5 - 1; f[2 * n + i] = px[i * 4 + 2] / 127.5 - 1; }
+  const out = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, h, w]) });
+  const o = out[sess.outputNames[0]], [, T, C] = o.dims, d = o.data;
+  const chars = []; let prev = -1;
+  for (let t = 0; t < T; t++) {
+    let bi = 0, bv = -Infinity;
+    for (let k = 0; k < C; k++) { const v = d[t * C + k]; if (v > bv) { bi = k; bv = v; } }
+    if (bi !== 0) {
+      const ch = (dict[bi] || '').trim().toUpperCase();
+      if (bi !== prev && ch) chars.push({ ch, p: bv, alt: {} });
+      const cur = chars[chars.length - 1];
+      if (cur) for (let k = 1; k < C; k++) {     // 這個字的其他候選（不算空白、不算自己）
+        if (k === bi) continue; const v = d[t * C + k]; if (v < 0.005) continue;
+        const a = (dict[k] || '').trim().toUpperCase(); if (a && a !== cur.ch) cur.alt[a] = Math.max(cur.alt[a] || 0, v);
+      }
+    }
+    prev = bi;
+  }
+  const s = chars.map(c => c.ch).join('');
+  const m = s.match(/[A-Z][0-9]{9}/); if (!m) return null;
+  if (validId(m[0])) return m[0];
+  const base = chars.slice(m.index, m.index + 10), fixes = [];
+  base.forEach((c, i) => Object.entries(c.alt).forEach(([a, pa]) => {
+    if (i === 0 ? !/[A-Z]/.test(a) : !/[0-9]/.test(a)) return;
+    const v = base.map((x, j) => j === i ? a : x.ch).join('');
+    if (validId(v)) fixes.push([v, pa / c.p]);
+  }));
+  fixes.sort((a, b) => b[1] - a[1]);
+  // 只有一種改法，或第一名比第二名有把握 3 倍以上才用；不然寧可請你重拍
+  return fixes.length && (fixes.length === 1 || fixes[0][1] > fixes[1][1] * 3) ? fixes[0][0] : null;
+}
+
 // 用「姓名」「出生」「發證日期」標籤的位置推算身分證整張卡的範圍（像素）
-// 實際身分證：姓名列在卡片高度 49%、出生 67%、發證日期 81%，「姓」字左緣在卡片寬度 6%
+// 實際量真的身分證：姓名列在卡片高度 50%、出生 71%、發證日期 90%，「姓」字左緣在卡片寬度 1.5%
 function idCardBox(lines, cw, ch) {
   const tt = L => L.t.replace(/\s/g, '');
   const nl = lines.find(L => /^姓/.test(tt(L)) && L.x0 < 0.4);
   if (!nl) return null;
   const left = L => Math.abs(L.x0 - nl.x0) < 0.08;
-  const bl = lines.find(L => L !== nl && L.cy > nl.cy && left(L) && /^出|年月日/.test(tt(L)));
-  const il = lines.find(L => L !== nl && L.cy > nl.cy && left(L) && /發證|日期/.test(tt(L)));
+  // 「出 生／年月日」可能分成兩行：取兩行合起來的中心
+  const bls = lines.filter(L => L !== nl && L.cy > nl.cy && L.cy < nl.cy + 0.5 && left(L) && /^出|年月日|^生/.test(tt(L)));
+  const bcy = bls.length ? (Math.min(...bls.map(L => L.y0)) + Math.max(...bls.map(L => L.y1))) / 2 : 0;
+  const il = lines.find(L => L !== nl && L.cy > nl.cy && left(L) && /發證|发证|日期/.test(tt(L)));
   const est = [];
-  if (bl) est.push((bl.cy - nl.cy) * ch / 0.18);
-  if (il) est.push((il.cy - nl.cy) * ch / 0.32);
+  if (bcy) est.push((bcy - nl.cy) * ch / 0.21);
+  if (il) est.push((il.cy - nl.cy) * ch / 0.40);
   if (!est.length) return null;
   const Hc = est.reduce((a, b) => a + b) / est.length;
   if (Hc < ch * 0.15) return null;
   const Wc = Hc * CARD;
-  return { x: nl.x0 * cw - 0.06 * Wc, y: nl.cy * ch - 0.49 * Hc, w: Wc, h: Hc };
+  return { x: nl.x0 * cw - 0.015 * Wc, y: nl.cy * ch - 0.50 * Hc, w: Wc, h: Hc };
 }
 
 // 身分證的名字：每個字固定間距排開（約卡片寬 17%），中間的底紋常被讀成多一個字（例如「徐余啓彰」），
@@ -196,6 +251,7 @@ async function refineIdName(lines, img) {
     // 沒讀到「名」：標籤那一塊如果只有「姓名」兩個字，名字從它右邊開始；標籤跟姓黏在一起時不能用它的右緣（會把姓切掉）
     if (/^姓名?$/.test(tt(lbl))) cands = cands.filter(c => c.cx > lbl.x1 - 0.01);
   }
+  cands = cands.filter(c => c.cx > 0.13);   // 卡片寬 13% 以左是「姓 名」標籤（「名」常被讀錯成「石」之類）
   if (!cands.length) return null;
   const c1 = cands[0].cx;
   let best = null;
@@ -239,8 +295,8 @@ function parseIdLines(lines) {
   const bLbl = lines.find(L => /^出|年月日/.test(L.t.replace(/\s/g, '')) && L.x0 < 0.3);
   for (const L of lines) {
     const t = L.t.replace(/\s/g, '');
-    if (/發證|補發|換發|初發|[(（](.{1,3})[)）]/.test(t)) continue;
-    const m = t.match(/民國?(\d{2,3})[^\d]{0,3}(\d{1,2})月(\d{1,2})日?/) || t.match(/^(\d{2,3})年(\d{1,2})月(\d{1,2})日?$/);
+    if (/發證|发证|補|补|換|换|初發|初发|[市縣县]|[(（](.{1,3})[)）]/.test(t)) continue;   // 發證日期那一行（有「換發」「高市」）
+    const m = t.match(/民[國国]?(\d{2,3})[^\d]{0,3}(\d{1,2})月(\d{1,2})日?/) || t.match(/^(\d{2,3})年(\d{1,2})月(\d{1,2})日?$/);
     if (m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31) bs.push([+m[1], `${+m[1]}/${pad2(m[2])}/${pad2(m[3])}`, L]);
   }
   // 跟「出生年月日」標籤同一列的優先（旁邊紙上的日期不要），沒有標籤才取最早的

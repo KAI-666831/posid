@@ -197,7 +197,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/20-g</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/20-h</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -955,6 +955,7 @@ function collectRecord() {
   const r = { type:docType };
   for (const k of ALL_F) r[k] = $(k).value.trim();
   r.idno = r.idno.toUpperCase(); r.ppno = r.ppno.toUpperCase();
+  if (r.name) r.name = toTrad(r.name);
   r.birthAd = TYPES[docType].date === 'roc' ? (rocToAd(r.birth).replace('西元 ','')) : r.birth;
   return r;
 }
