@@ -144,6 +144,7 @@ async function contTick() {
   if (cont.still < 2 && waited < 2000) { contUI(d < 9 ? '拿穩…' : '偵測到證件，拿穩…', '#eab308'); return; }
 
   cont.busy = true; contUI('辨識中…', '#3b82f6');
+  const t0 = performance.now();
   try {
     let card = cropFromVideo();
     if (cont.base === 'auto' && highAuto()) {
@@ -214,7 +215,8 @@ async function contTick() {
         storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un] }), lastCrop);
         cont.count++; if ($('contCount')) $('contCount').textContent = cont.count;
         cont.recent.unshift({ ...r, unsure:[...un] }); renderRecent();
-        beep(true); contUI(`✓ ${primaryName(r)}　${primaryNo(r)}　已存檔，請移開`, '#16a34a');
+        lastOcrMs = performance.now() - t0;
+        beep(true); contUI(`✓ ${primaryName(r)}　${primaryNo(r)}　已存檔，請移開（${(lastOcrMs / 1000).toFixed(1)} 秒）`, '#16a34a');
         groupGot();
       }
       clearFields(); $('cardView').style.display = 'none';

@@ -179,8 +179,13 @@
   <div id="grpBody" style="margin-top:8px"></div>
 </div>
 
+<div class="card" id="mtCard">
+  <b>實驗功能</b>
+  <div id="mtBody" style="margin-top:6px"></div>
+</div>
+
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-k</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-l</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -644,7 +649,7 @@ async function _loadModel() {
   $('prog').style.display = 'block'; $('prog').removeAttribute('value');
   $('status').textContent = '準備辨識引擎…';
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
-  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.numThreads = mtThreads();
   ort.env.wasm.wasmPaths = new URL('ort/', location.href).href;
   ort.env.wasm.wasmBinary = await getAsset('ort/ort-wasm-simd-threaded.wasm', '辨識引擎');
   const txt = new TextDecoder().decode(await getAsset('model/ppocrv5_dict.txt', '字典'));
@@ -1024,11 +1029,30 @@ else {
   setTimeout(() => loadModel().then(() => loadDet()).then(() => { $('status').textContent = '辨識引擎已就緒，可離線使用。'; }).catch(e => { $('status').textContent = '模型載入失敗：' + e.message; }), 300);
 }
 
+// ---------- 實驗：多執行緒加速 ----------
+function mtThreads() { return self.crossOriginIsolated ? Math.max(1, Math.min(4, navigator.hardwareConcurrency || 2)) : 1; }
+async function mtGet() { try { return !!(await (await caches.open('posid-flags')).match('mt')); } catch { return false; } }
+async function mtSet(on) {
+  try { const c = await caches.open('posid-flags'); on ? await c.put('mt', new Response('1')) : await c.delete('mt'); } catch {}
+  try { navigator.serviceWorker.controller && navigator.serviceWorker.controller.postMessage('flags'); } catch {}
+  toast(on ? '已開啟，重新載入中…' : '已關閉，重新載入中…');
+  setTimeout(() => location.reload(), 600);
+}
+async function mtRender() {
+  const el = $('mtBody'); if (!el) return;
+  const on = await mtGet(), n = mtThreads();
+  el.innerHTML = `<label class="crew-row" style="border:0"><input type="checkbox" ${on ? 'checked' : ''} onchange="mtSet(this.checked)"> 多執行緒加速（用手機多個核心辨識）</label>
+    <div style="font-size:14px">${n > 1 ? `<span class="ok">● 生效中：${n} 核心</span>` : on ? '<span class="bad">● 已開啟但還沒生效：把 app 完全關掉再開一次</span>' : '目前：1 核心'}
+    ${lastOcrMs ? `・上一張辨識花 <b>${(lastOcrMs / 1000).toFixed(1)}</b> 秒` : ''}</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:4px">打開後收銀同步、雙機連線如果有怪怪的，就關掉。可以用「上一張辨識花幾秒」比較開關前後的速度。</div>`;
+}
+let lastOcrMs = 0;
+
 // ---------- 收銀 ⇄ 證件 ----------
 function showTab(t) {
   document.body.classList.toggle('tab-pos', t === 'pos');
   document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
-  if (t === 'id') { render(); grpRender(); }
+  if (t === 'id') { render(); grpRender(); mtRender(); }
 }
 document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 // 收銀結帳＝一組客人。馬上掃：直接進連續掃描、掃滿回收銀；等一下掃：先排隊
