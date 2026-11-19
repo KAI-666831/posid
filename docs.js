@@ -129,7 +129,8 @@ function parseDl(lines) {
   const ds = [];
   for (const L of lines) {
     const t = L.t.replace(/\s/g, '');
-    let m = t.match(/^0?(\d{2,3})[.\/](\d{1,2})[.\/](\d{1,2})$/) || t.match(/^0?(\d{2,3})(\d{2})(\d{2})$/);
+    // 舊式駕照「出生日期」標籤會跟日期黏在同一格（例如「出生日期62.12.31」）：日期前後有別的字也要認得
+    let m = t.match(/(?:^|[^\d.])0?(\d{2,3})[.\/](\d{1,2})[.\/](\d{1,2})(?![\d.])/) || t.match(/^0?(\d{2,3})(\d{2})(\d{2})$/);
     if (m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31) ds.push([+m[1], m[2], m[3], L]);
   }
   // 生日在出生日期那一列＝由上往下第一個「算起來 17 歲以上」的日期（舊式、新式駕照都是生日在最上面；
@@ -171,7 +172,7 @@ function parseNhi(lines) {
 
 // ---------- 用英文拼音核對中文的姓（船員證、護照同時有中英文名字）----------
 // 中文的姓跟英文拼音對不上、而拼音只對得到一個姓 → 換成那個姓並標「請核對」（例如 JUANG 對到「莊」，讀成「菲」時改回來）
-const SURNAMES = (() => { const m = {}; '陳:CHEN,CHERN,CHAN,TAN|林:LIN,LIM,LAM|黃:HUANG,HWANG|張:CHANG,ZHANG,CHEUNG|李:LI,LEE|王:WANG|吳:WU,WOO|劉:LIU,LAU|蔡:TSAI,CAI,TSAY|楊:YANG,YEUNG|許:HSU,XU,SHIU|鄭:CHENG,ZHENG,JHENG|謝:HSIEH,XIE,SIE,SHIEH|郭:KUO,GUO,KWOK|洪:HUNG,HONG|邱:CHIU,QIU,CHIOU|曾:TSENG,ZENG,TZENG|廖:LIAO|賴:LAI|徐:HSU,XU,SYU|周:CHOU,ZHOU,JOU|葉:YEH,YE,YIP|蘇:SU|莊:CHUANG,ZHUANG,JUANG,JHUANG|呂:LU,LYU,LEU|江:CHIANG,JIANG|何:HO,HE|蕭:HSIAO,XIAO,SIAO|羅:LO,LUO|高:KAO,GAO|潘:PAN|簡:CHIEN,JIAN|朱:CHU,ZHU,JHU|鍾:CHUNG,ZHONG,JHONG|彭:PENG|游:YU,YOU|詹:CHAN,ZHAN,JHAN|胡:HU|施:SHIH,SHI|沈:SHEN|余:YU,YEE|趙:CHAO,ZHAO,JHAO|盧:LU,LOO|梁:LIANG,LEUNG|顏:YEN,YAN|柯:KO,KE,KOH|孫:SUN|魏:WEI|翁:WENG|戴:TAI,DAI|范:FAN|宋:SUNG,SONG|方:FANG|鄧:TENG,DENG|杜:TU,DU|傅:FU|侯:HOU|曹:TSAO,CAO|薛:HSUEH,XUE,SYUE|丁:TING,DING|卓:CHO,ZHUO,JHUO|阮:JUAN,RUAN|馬:MA|董:TUNG,DONG|溫:WEN|唐:TANG|藍:LAN|石:SHIH,SHI|蔣:CHIANG,JIANG|古:KU,GU|紀:CHI,JI|姚:YAO|連:LIEN,LIAN|馮:FENG|歐:OU|程:CHENG|湯:TANG|田:TIEN,TIAN|康:KANG|姜:CHIANG,JIANG|白:PAI,BAI|汪:WANG|鄒:TSOU,ZOU|尤:YU,YOU|巫:WU|黎:LI|涂:TU|龔:KUNG,GONG|嚴:YEN,YAN|韓:HAN|袁:YUAN|金:CHIN,JIN|童:TUNG,TONG|陸:LU|夏:HSIA,XIA|柳:LIU|邵:SHAO|錢:CHIEN,QIAN|伍:WU|倪:NI|于:YU|譚:TAN,TAM|駱:LO,LUO|熊:HSIUNG,XIONG|任:JEN,REN|甘:KAN,GAN|秦:CHIN,QIN|顧:KU,GU|毛:MAO|章:CHANG,ZHANG|史:SHIH,SHI|官:KUAN,GUAN|萬:WAN|俞:YU|雷:LEI|粘:NIEN,NIAN|饒:JAO,RAO|陶:TAO|易:YI|凌:LING|殷:YIN|談:TAN|段:TUAN,DUAN|鄭:CHENG'.split('|').forEach(e => { const [z, rs] = e.split(':'); rs.split(',').forEach(r => (m[r] = m[r] || []).includes(z) || m[r].push(z)); }); return m; })();
+const SURNAMES = (() => { const m = {}; '陳:CHEN,CHERN,CHAN,TAN|林:LIN,LIM,LAM|黃:HUANG,HWANG|張:CHANG,ZHANG,CHEUNG|李:LI,LEE|王:WANG|吳:WU,WOO|劉:LIU,LAU|蔡:TSAI,CAI,TSAY|楊:YANG,YEUNG|許:HSU,XU,SHIU|鄭:CHENG,ZHENG,JHENG|謝:HSIEH,XIE,SIE,SHIEH|郭:KUO,GUO,KWOK|洪:HUNG,HONG|邱:CHIU,QIU,CHIOU|曾:TSENG,ZENG,TZENG|廖:LIAO|賴:LAI|徐:HSU,XU,SYU|周:CHOU,ZHOU,JOU|葉:YEH,YE,YIP|蘇:SU|莊:CHUANG,ZHUANG,JUANG,JHUANG|呂:LU,LYU,LEU|江:CHIANG,JIANG|何:HO,HE|蕭:HSIAO,XIAO,SIAO|羅:LO,LUO|高:KAO,GAO|潘:PAN|簡:CHIEN,JIAN|朱:CHU,ZHU,JHU|鍾:CHUNG,ZHONG,JHONG|彭:PENG|游:YU,YOU|詹:CHAN,ZHAN,JHAN|胡:HU|施:SHIH,SHI|沈:SHEN|余:YU,YEE|趙:CHAO,ZHAO,JHAO|盧:LU,LOO|梁:LIANG,LEUNG|顏:YEN,YAN|柯:KO,KE,KOH|孫:SUN|魏:WEI|翁:WENG|戴:TAI,DAI|范:FAN|宋:SUNG,SONG|方:FANG|鄧:TENG,DENG|杜:TU,DU|傅:FU|侯:HOU|曹:TSAO,CAO|薛:HSUEH,XUE,SYUE|丁:TING,DING|卓:CHO,ZHUO,JHUO|阮:JUAN,RUAN|馬:MA|董:TUNG,DONG|溫:WEN|唐:TANG|藍:LAN|石:SHIH,SHI|蔣:CHIANG,JIANG|古:KU,GU|紀:CHI,JI|姚:YAO|連:LIEN,LIAN|馮:FENG|歐:OU|程:CHENG|湯:TANG|田:TIEN,TIAN|康:KANG|姜:CHIANG,JIANG|白:PAI,BAI|汪:WANG|鄒:TSOU,ZOU|尤:YU,YOU|巫:WU|黎:LI|涂:TU|龔:KUNG,GONG|嚴:YEN,YAN|韓:HAN|袁:YUAN|金:CHIN,JIN|童:TUNG,TONG|陸:LU|夏:HSIA,XIA|柳:LIU|邵:SHAO|錢:CHIEN,QIAN|伍:WU|倪:NI|于:YU|譚:TAN,TAM|駱:LO,LUO|熊:HSIUNG,XIONG|任:JEN,REN|甘:KAN,GAN|秦:CHIN,QIN|顧:KU,GU|毛:MAO|章:CHANG,ZHANG|史:SHIH,SHI|官:KUAN,GUAN|萬:WAN|俞:YU|雷:LEI|粘:NIEN,NIAN|饒:JAO,RAO|烏:WU,WOO|陶:TAO|易:YI|凌:LING|殷:YIN|談:TAN|段:TUAN,DUAN|鄭:CHENG'.split('|').forEach(e => { const [z, rs] = e.split(':'); rs.split(',').forEach(r => (m[r] = m[r] || []).includes(z) || m[r].push(z)); }); return m; })();
 const ALL_SUR = new Set(Object.values(SURNAMES).flat());
 function fixSurname(r, enSurname) {
   const zh = r.name || '', s = (enSurname || '').toUpperCase().replace(/[^A-Z]/g, '');
@@ -215,7 +216,19 @@ async function parseSeaman(lines, img) {
   r.name = best ? best[0] : '';
   r._nameConf = best ? (votes[best[0]] || 0) : 0;     // 一模一樣的結果讀到幾次：少於 2 次就沒把握
   // 英文姓名那一行：第一個字是表上的姓氏拼音的那一行（不一定是第一個英文行，前面可能有 NAME 標籤）
-  const enSur = lines.filter(L => L.cy < lim + 0.02).map(L => L.t.toUpperCase().replace(/[^A-Z\s]/g, ' ').trim().split(/\s+/)[0]).find(w => SURNAMES[w]);
+  const enL = lines.filter(L => L.cy < lim + 0.02).find(L => SURNAMES[L.t.toUpperCase().replace(/[^A-Z\s]/g, ' ').trim().split(/\s+/)[0]]);
+  const enSur = enL ? enL.t.toUpperCase().replace(/[^A-Z\s]/g, ' ').trim().split(/\s+/)[0] : '';
+  // 英文 3 個音節、中文只讀到 2 個字：通常是姓（印得比較淡）漏掉了 → 把中文名字左邊那一格單獨再讀一次
+  const nSyl = enL ? enL.t.toUpperCase().replace(/[^A-Z\s-]/g, ' ').trim().split(/[\s-]+/).filter(Boolean).length : 0;
+  if (img && r.name && nSyl === r.name.length + 1) {
+    const zl = lines.find(L => L.cy < lim && L.t.replace(/[^\u4e00-\u9fff]/g, '').includes(r.name));
+    if (zl) {
+      const h = zl.y1 - zl.y0, cw = h * img.height / img.width;
+      const t = await recRegion(img, zl.x0 - cw * 1.4, zl.y0 - h * 0.1, zl.x0 + cw * 0.15, zl.y1 + h * 0.1);
+      const c = (t.match(/[\u4e00-\u9fff]/g) || []).pop();
+      if (c && (ALL_SUR.has(c) || (SURNAMES[enSur] || []).includes(c))) { r.name = c + r.name; r._surFix = true; }
+    }
+  }
   if (enSur) fixSurname(r, enSur);
   return r;
 }
@@ -266,6 +279,14 @@ function parsePassportLines(lines) {
   // 資料頁印的「姓, 名」（一整行，例如 CHEN, KUO-CHIANG）比 MRZ 好讀（MRZ 的 < 常跟 I、K 黏在一起讀錯），有就優先用
   const printed = lines.map(L => L.t.toUpperCase().replace(/\s+/g, ' ').trim()).find(t => /^[A-Z]{2,}(?: [A-Z]+)?\s*,\s*[A-Z]+(?:[ -][A-Z]+){0,3}$/.test(t) && t.length <= 40);
   if (printed) r.nameEn = printed.replace(/\s*,\s*/, ', ');
+  // 中文姓名印在英文姓名同一行（例如「劉崧源 LIU, SUNG-YUAN」）：抓同一行的中文
+  const enLine = lines.find(L => /[A-Z]{2,}\s*,\s*[A-Z]/.test(L.t.toUpperCase()) && !/</.test(L.t));
+  if (enLine) {
+    const h = enLine.y1 - enLine.y0;
+    const same = [enLine, ...lines.filter(L => L !== enLine && Math.abs(L.cy - enLine.cy) < h * 0.6)];
+    const zh = same.map(L => (L.t.match(/[\u4e00-\u9fff]{2,4}/) || [''])[0]).find(z => z && !/姓名|國籍|護照|中華民國/.test(z));
+    if (zh) r.name = zh;
+  }
   if (r.name && r.nameEn) fixSurname(r, r.nameEn.split(/[\s,]+/)[0]);
   return r;
 }
