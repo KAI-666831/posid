@@ -30,7 +30,7 @@ function flash(ok) {
 function sampleFrame() {
   const v = $('video'); if (!v.videoWidth) return null;
   const W = innerWidth, H = innerHeight, s = Math.max(W / v.videoWidth, H / v.videoHeight);
-  const ox = (W - v.videoWidth*s)/2, oy = (H - v.videoHeight*s)/2, r = frameRect();
+  const ox = (W - v.videoWidth*s)/2, oy = (H - v.videoHeight*s)/2, r = vidFrame();
   const c = sampleFrame.c || (sampleFrame.c = Object.assign(document.createElement('canvas'), { width:48, height:30 }));
   const g = c.getContext('2d', { willReadFrequently:true });
   g.drawImage(v, (r.x-ox)/s, (r.y-oy)/s, r.w/s, r.h/s, 0, 0, 48, 30);

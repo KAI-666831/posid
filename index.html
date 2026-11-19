@@ -122,7 +122,11 @@
   #review .field label { color:#555; }
 
   /* 全螢幕取景 / 裁切畫面 */
-  #overlay { position:fixed; inset:0; background:#000; z-index:10; display:none; }
+  #overlay { position:fixed; inset:0; background:#000; z-index:10; display:none; overflow:hidden; }
+  #highUI { position:absolute; right:16px; z-index:3; display:none; gap:6px; align-items:center;
+            background:rgba(0,0,0,.55); color:#fff; padding:4px; border-radius:10px; font-size:14px; }
+  #highUI button { background:rgba(255,255,255,.18); color:#fff; border:0; border-radius:8px; padding:6px 10px; font-size:14px; width:auto; margin:0; }
+  #highUI b { min-width:44px; text-align:center; } #highUI span { padding:0 6px; opacity:.8; }
   #overlay video, #overlay img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   #overlay img { object-fit:contain; touch-action:none; }
   #frame { position:absolute; border:3px solid #22c55e; border-radius:12px;
@@ -172,7 +176,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-e</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-f</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -302,6 +306,7 @@
   <div id="frame"></div>
   <div id="camRes" style="position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:10px;color:#fff;font-size:12px;text-align:right;background:rgba(0,0,0,.45);padding:4px 8px;border-radius:8px"></div>
   <div id="hint"></div>
+  <div id="highUI"></div>
   <div id="zoomRow"><input id="zoom" type="range" min="0.3" max="4" step="0.01" value="1"></div>
   <div id="contRecent"></div>
   <div id="contTypes">
@@ -441,11 +446,40 @@ function frameRect() {
   if (h > H * 0.6) { h = H * 0.6; w = h * ratio(); }
   return { x:(W-w)/2, y:(H-h)/2 - 30, w, h };
 }
+// ---------- 架高模式：手機架在拍得到護照的高度，掃卡片類（自動、身分證、居留證、健保卡）時畫面自動放大 ----------
+const HIGH_KEY = 'posid_high', ZOOM_TYPES = ['auto', 'id', 'arc', 'nhi'];
+function highCfg() { try { return Object.assign({ on:false, z:1.4 }, JSON.parse(localStorage.getItem(HIGH_KEY)) || {}); } catch { return { on:false, z:1.4 }; } }
+function highSet(c) { try { localStorage.setItem(HIGH_KEY, JSON.stringify(c)); } catch {} applyZoom(); }
+const curKind = () => (typeof cont !== 'undefined' && cont && cont.base) ? cont.base : docType;
+let cssZ = 1;   // 目前畫面放大倍率
+function applyZoom() {
+  const h = highCfg(), v = $('video');
+  cssZ = mode === 'camera' && stream && h.on && ZOOM_TYPES.includes(curKind()) ? h.z : 1;
+  const r = frameRect();
+  v.style.transformOrigin = `${r.x + r.w / 2}px ${r.y + r.h / 2}px`;
+  v.style.transform = cssZ > 1 ? `scale(${cssZ})` : '';
+  const el = $('highUI'); if (!el) return;
+  el.style.display = mode === 'camera' && stream ? 'flex' : 'none';
+  el.innerHTML = !h.on ? `<button onclick="highSet({...highCfg(),on:true})">架高模式：關</button>`
+    : `<button onclick="highSet({...highCfg(),on:false})">架高：開</button>` +
+      (ZOOM_TYPES.includes(curKind())
+        ? `<button onclick="highSet({...highCfg(),z:Math.max(1,Math.round((highCfg().z-0.05)*100)/100)})">－</button><b>${h.z.toFixed(2)}×</b><button onclick="highSet({...highCfg(),z:Math.min(3,Math.round((highCfg().z+0.05)*100)/100)})">＋</button>`
+        : '<span>這類不放大</span>');
+  if (typeof showCamRes === 'function') showCamRes();
+}
+// 取景框換算回「沒放大」的畫面座標，用來從原始影像裁切
+function vidFrame() {
+  const r = frameRect(); if (cssZ === 1) return r;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, w = r.w / cssZ, h = r.h / cssZ;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
 function placeFrame() {
   const r = frameRect(), f = $('frame');
   Object.assign(f.style, { left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px' });
   $('hint').style.top = (r.y - 60) + 'px';
   const ct = $('contTypes'); if (ct) ct.style.top = (r.y + r.h + 14) + 'px';
+  const hu = $('highUI'); if (hu) hu.style.top = (r.y + r.h + (ct && ct.style.display === 'flex' ? 72 : 14)) + 'px';
+  applyZoom();
 }
 addEventListener('resize', placeFrame);
 
@@ -465,17 +499,17 @@ async function openCamera() {
   try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
   // 顯示相機實際解析度，以及證件在畫面裡大約有多少像素（太小名字容易讀錯）
   const v = $('video');
-  const showRes = () => {
-    if (!v.videoWidth) return;
+  const showRes = window.showCamRes = () => {
+    if (!v.videoWidth || mode !== 'camera') return;
     const sc = Math.max(innerWidth / v.videoWidth, innerHeight / v.videoHeight);
-    const px = Math.round(frameRect().w / sc);
+    const px = Math.round(vidFrame().w / sc);
     $('camRes').innerHTML = `相機 ${v.videoWidth}×${v.videoHeight}・證件寬約 ${px}px` + (px < 1100 ? '<br><span style="color:#fca5a5">解析度偏低</span>' : '');
   };
   v.onloadedmetadata = showRes; setTimeout(showRes, 800);
 }
 function closeOverlay() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  $('overlay').style.display = 'none';
+  $('overlay').style.display = 'none'; applyZoom();
 }
 
 // 把畫面上的框框換算成原始影像座標後裁切（object-fit: cover）
@@ -484,7 +518,7 @@ function cropFromVideo() {
   const W = innerWidth, H = innerHeight;
   const s = Math.max(W / vw, H / vh);
   const ox = (W - vw*s)/2, oy = (H - vh*s)/2;
-  const r = frameRect();
+  const r = vidFrame();
   return drawCrop(v, (r.x-ox)/s, (r.y-oy)/s, r.w/s, r.h/s);
 }
 function drawCrop(src, sx, sy, sw, sh) {
