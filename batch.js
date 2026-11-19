@@ -5,8 +5,8 @@ let batch = null;   // { gid, items:[{ file, url, st:'wait'|'run'|'ok'|'dup'|'fa
 function batchStart(gid) {
   const g = gid ? grpById(gid) : null;
   if (g && g.state === 'done' && g.got < g.want) { g.state = 'wait'; grpSave(); }   // 補拍沒掃滿的組
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+  const inp = $('batchPick');
+  inp.value = '';
   inp.onchange = () => {
     const files = [...inp.files]; if (!files.length) return;
     if (!batch || batch.gid !== (gid || null)) batch = { gid: gid || null, items: [], running: false };
@@ -22,8 +22,8 @@ function batchClose() {
 }
 // 失敗的那張：直接開 iPhone 相機重拍
 function batchRetake(i) {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
+  const inp = $('batchCam');
+  inp.value = '';
   inp.onchange = () => {
     const f = inp.files[0]; if (!f || !batch) return;
     const it = batch.items[i]; URL.revokeObjectURL(it.url);
