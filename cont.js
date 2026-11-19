@@ -184,12 +184,12 @@ async function contTick() {
       if (!EN_FIRST(r.type)) r.name = pickName(nv) || r.name;
       cont.cand = null; cont.tries = 0;
       const c = findConflict(r);
-      if (c && c.kind === 'dup' && cont.grp) {        // 收銀模式：老客人之前存過，也算這組的一位
-        grpTagExisting(r);
-        beep(true); contUI(`✓ ${primaryName(r)} 之前存過，算這組 1 位，請移開`, '#16a34a');
-        cont.recent.unshift({ ...r, unsure:[] }); renderRecent(); groupGot();
+      if (c && c.kind === 'dup') {                     // 重複：不存、不算人數，明顯提醒
+        const old = load().find(x => primaryNo(r) ? primaryNo(x) === primaryNo(r) : primaryName(x) === primaryName(r));
+        const og = old && old.grp && grpById(old.grp);
+        beep(false);
+        contUI(`⚠ 重複！${primaryName(r)} 已經掃過${og ? '（' + grpLabel(og) + '）' : ''}，這張不算，請換下一張`, '#dc2626');
       }
-      else if (c && c.kind === 'dup') { beep(false); contUI(`${c.msg}，請換下一張`, '#eab308'); }
       else if (c) { beep(false); contUI(`⚠ ${c.msg}。沒有存檔，請看實體證件，用單張掃描確認`, '#dc2626'); }
       else {
         storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un] }), lastCrop);

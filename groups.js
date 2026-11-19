@@ -49,13 +49,6 @@ function grpAdvance() {
 }
 // 掃到一位：存檔的紀錄標上是哪一組
 function grpTag(r) { if (cont && cont.grp) r.grp = cont.grp.id; return r; }
-// 之前存過的老客人：把舊紀錄改成這一組
-function grpTagExisting(r) {
-  if (!cont || !cont.grp) return;
-  const a = load(), no = primaryNo(r), nm = primaryName(r);
-  const i = a.findIndex(x => no ? primaryNo(x) === no : (primaryName(x) === nm && (x.birth || '') === (r.birth || '')));
-  if (i >= 0) { a[i].grp = cont.grp.id; store(a); }
-}
 function grpNames(g) { return load().filter(r => r.grp === g.id).map(r => primaryName(r) || primaryNo(r)); }
 
 // ---------- 畫面：今日各組 ----------
