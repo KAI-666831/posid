@@ -107,6 +107,7 @@ async function batchOne(it, b) {
     }
     // 兩種讀法都跑（專用讀法＋文字標籤），對得上才算有把握；對不上的欄位標「請核對」
     const q = parseIdLines(idLines); delete q._byLabel;
+    if (cb) { const nm = await refineIdName(idLines, idCard); if (nm) q.name = nm; }
     await runOcr(idCard);
     const pr = collectRecord();
     const un = new Set(lastUnsure);
@@ -165,6 +166,53 @@ function idCardBox(lines, cw, ch) {
   if (Hc < ch * 0.15) return null;
   const Wc = Hc * CARD;
   return { x: nl.x0 * cw - 0.06 * Wc, y: nl.cy * ch - 0.49 * Hc, w: Wc, h: Hc };
+}
+
+// 身分證的名字：每個字固定間距排開（約卡片寬 17%），中間的底紋常被讀成多一個字（例如「徐余啓彰」），
+// 很細的字（例如「一」）又常漏掉。照固定間距對格子：不在格子上的丟掉，格子上沒讀到的單獨再讀一次。
+async function refineIdName(lines, img) {
+  const tt = L => L.t.replace(/\s/g, '');
+  const lbl = lines.find(L => /^姓/.test(tt(L)) && L.x0 < 0.3); if (!lbl) return null;
+  const h = lbl.y1 - lbl.y0;
+  const row = lines.filter(L => Math.abs(L.cy - lbl.cy) < h * 1.3 && L.x1 > lbl.x0 && L.cx < 0.74);
+  // 整條名字列一次讀，模型會給每個字的精確橫向位置
+  const by0 = Math.min(...row.map(L => L.y0)), by1 = Math.max(...row.map(L => L.y1));
+  const bx0 = Math.max(lbl.x0, 0), bx1 = 0.72;
+  const cs = await recRegion(img, bx0, by0, bx1, by1, true);
+  let cands = cs.filter(c => /[一-鿿]/.test(c.ch)).map(c => ({ c: c.ch, cx: bx0 + c.x * (bx1 - bx0), p: c.p }));
+  // 去掉「姓」「名」標籤字
+  const li = cands.map(c => c.c).lastIndexOf('名');
+  if (li >= 0 && li <= 1) cands = cands.slice(li + 1); else while (cands.length && /[姓名]/.test(cands[0].c)) cands.shift();
+  cands = cands.filter(c => c.cx > lbl.x1 - 0.01);
+  if (!cands.length) return null;
+  const c1 = cands[0].cx;
+  let best = null;
+  for (let p = 0.13; p <= 0.215; p += 0.005) {
+    let on = 0, off = 0;
+    let err = 0;
+    for (const c of cands) { const k = (c.cx - c1) / p, d = Math.abs(k - Math.round(k)); if (Math.round(k) <= 3 && d < 0.3) { on++; err += d; } else off++; }
+    const sc = on - off * 0.6 - err - Math.abs(p - 0.17) * (8 / cands.length);   // 字少時比較相信實際卡片的間距
+    if (!best || sc > best.sc) best = { p, sc };
+  }
+  // 用對上格子的字再微調一次間距
+  const fit = cands.map(c => [c, Math.round((c.cx - c1) / best.p)]).filter(([c, k]) => k >= 1 && k <= 3 && Math.abs((c.cx - c1) / best.p - k) < 0.3);
+  const p = Math.min(0.2, Math.max(0.145, fit.length >= 2 ? fit.reduce((s, [c, k]) => s + (c.cx - c1) / k, 0) / fit.length : best.p));
+  const y0 = Math.min(...row.map(L => L.y0)), y1 = Math.max(...row.map(L => L.y1));
+  const cw = (y1 - y0) / CARD;   // 字寬（以卡片寬為單位，字差不多是正方形）
+  let name = '';
+  for (let k = 0; k <= 3; k++) {
+    const sx = c1 + k * p; if (sx > 0.70) break;
+    const hit = cands.filter(c => Math.abs(c.cx - sx) < p * 0.3).sort((a, b) => Math.abs(a.cx - sx) - Math.abs(b.cx - sx))[0];
+    let ch = hit ? hit.c : '';
+    if (!ch && img && !cands.some(c => Math.abs(c.cx - sx) < p * 0.6)) {   // 這一格附近完全沒讀到字：單獨裁這一格再讀
+      const t = await recRegion(img, sx - cw * 0.7, y0, sx + cw * 0.7, y1);
+      const m = (t || '').match(/[一-鿿]/);
+      if (m && (recRegion.lastMinP || 0) > 0.5) ch = m[0];
+    }
+    if (!ch) break;                                     // 名字是連續的格子，空一格就結束
+    name += ch;
+  }
+  return /^[一-鿿]{2,4}$/.test(name) && !LABELS.test(name) ? name : null;
 }
 
 // 身分證：用文字標籤找（跟專用讀法互相核對）

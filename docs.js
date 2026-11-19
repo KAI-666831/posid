@@ -132,7 +132,11 @@ function parseDl(lines) {
     let m = t.match(/^0?(\d{2,3})[.\/](\d{1,2})[.\/](\d{1,2})$/) || t.match(/^0?(\d{2,3})(\d{2})(\d{2})$/);
     if (m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31) ds.push([+m[1], m[2], m[3], L]);
   }
-  ds.sort((a, b) => a[0] - b[0]);
+  // 生日在出生日期那一列＝由上往下第一個「算起來 17 歲以上」的日期（舊式、新式駕照都是生日在最上面；
+  // 不用「年份最小」：生日有一個數字讀錯時會改抓到發照日期）
+  ds.sort((a, b) => a[3].cy - b[3].cy);
+  const bi = ds.findIndex(d => birthOk('dl', `${d[0]}/${pad2(d[1])}/${pad2(d[2])}`));
+  if (bi > 0) ds.unshift(ds.splice(bi, 1)[0]);
   if (ds.length) r.birth = `${ds[0][0]}/${pad2(ds[0][1])}/${pad2(ds[0][2])}`;
   // 姓名：駕照號碼那一列和出生日期那一列之間的中文
   const top = ids[0]?.L.cy ?? 0, bottom = ds.length ? ds[0][3].cy : 1;
@@ -190,7 +194,11 @@ async function parseSeaman(lines, img) {
   }
   // 讀到一半的（例如「李承」）算給完整的（「李承翰」）
   const score = c => Object.entries(votes).reduce((n, [k, v]) => n + (c.includes(k) ? v : 0), 0);
-  const best = Object.keys(votes).map(k => [k, score(k)]).sort((a,b) => b[1]-a[1] || b[0].length - a[0].length)[0];
+  // 中文字數＝英文姓名的音節數（LIN SY HORNG → 3 個字）：有符合字數的就只從那些挑（多黏一個雜字時用）
+  const syl = en ? en.t.toUpperCase().replace(/[^A-Z\s-]/g, ' ').trim().split(/[\s-]+/).filter(Boolean).length : 0;
+  let keys = Object.keys(votes);
+  if (syl >= 2 && syl <= 4 && keys.some(k => k.length === syl)) keys = keys.filter(k => k.length === syl);
+  const best = keys.map(k => [k, score(k)]).sort((a,b) => b[1]-a[1] || b[0].length - a[0].length)[0];
   r.name = best ? best[0] : '';
   r._nameConf = best ? (votes[best[0]] || 0) : 0;     // 一模一樣的結果讀到幾次：少於 2 次就沒把握
   return r;
