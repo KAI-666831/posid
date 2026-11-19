@@ -133,7 +133,8 @@ function parseDl(lines) {
   for (const L of lines) {
     const t = L.t.replace(/\s/g, '');
     // 舊式駕照「出生日期」標籤會跟日期黏在同一格（例如「出生日期62.12.31」）：日期前後有別的字也要認得
-    let m = t.match(/(?:^|[^\d.])0?(\d{2,3})[.\/](\d{1,2})[.\/](\d{1,2})(?![\d.])/) || t.match(/^0?(\d{2,3})(\d{2})(\d{2})$/);
+    // 點常被讀成「-」或漏掉（例如 075.05.13 讀成「07505-13」）
+    let m = t.match(/(?:^|[^\d.])0?(\d{2,3})[.\/]?(\d{2})[.\/\-·,](\d{1,2})(?![\d.])/) || t.match(/(?:^|[^\d.])0?(\d{2,3})[.\/\-·,](\d{1,2})[.\/\-·,](\d{1,2})(?![\d.])/) || t.match(/^0?(\d{2,3})(\d{2})(\d{2})$/);
     if (m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31) ds.push([+m[1], m[2], m[3], L]);
   }
   // 生日在出生日期那一列＝由上往下第一個「算起來 17 歲以上」的日期（舊式、新式駕照都是生日在最上面；
@@ -281,7 +282,9 @@ function parsePassportLines(lines) {
   }
   // 資料頁印的「姓, 名」（一整行，例如 CHEN, KUO-CHIANG）比 MRZ 好讀（MRZ 的 < 常跟 I、K 黏在一起讀錯），有就優先用
   const printed = lines.map(L => L.t.toUpperCase().replace(/\s+/g, ' ').trim().replace(/^([A-Z]{2,})\.\s*(?=[A-Z])/, '$1, ')).find(t => /^[A-Z]{2,}(?: [A-Z]+)?\s*,\s*[A-Z]+(?:[ -][A-Z]+){0,3}$/.test(t) && t.length <= 40);
-  if (printed) r.nameEn = printed.replace(/\s*,\s*/, ', ');
+  // 「NO.REG.」之類的欄位標籤不是名字；MRZ 有讀到名字時，印的姓要跟 MRZ 對得上才換
+  const mrzSur = (r.nameEn || '').split(/[ ,]/)[0];
+  if (printed && !/^(NO|REG|TGL|DATE|TYPE|KODE|JENIS)\b/.test(printed) && (!mrzSur || printed.startsWith(mrzSur.slice(0, 3)))) r.nameEn = printed.replace(/\s*,\s*/, ', ');
   // 中文姓名印在英文姓名同一行（例如「劉崧源 LIU, SUNG-YUAN」）：抓同一行的中文
   const enLine = lines.find(L => /[A-Z]{2,}\s*[,.]\s*[A-Z]/.test(L.t.toUpperCase()) && !/</.test(L.t) && !/REPUBLIC|MINISTRY|NO\./.test(L.t.toUpperCase()));   // 逗號常被讀成句點
   if (enLine) {

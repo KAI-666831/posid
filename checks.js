@@ -23,17 +23,23 @@ function findConflict(r) {
       if (xnm === nm && (x.birth || '') === (r.birth || '')) return { kind:'dup', msg:`已經存過：${nm}` };
       return { kind:'conflict', msg:`證號 ${no} 已存過，但資料不同（已存：${xnm} ${x.birth || ''}）` };
     }
-    if (nm && xnm === nm && no && xno && xno !== no) return { kind:'conflict', msg:`${nm} 已存過，但證號不同（已存：${xno}）` };
+    if (nm && xnm === nm && no && xno && xno !== no) {
+      // 同名同生日、號碼不同＝同一個人拿另一種證件（例如外籍船員的護照、居留證、船員證）→ 算重複，不另外存
+      if (r.birth && x.birth && sameBirth(r, x)) return { kind:'dup', msg:`已經存過：${nm}（之前用別的證件）` };
+      if (r.birth && x.birth) continue;          // 同名不同生日：不同人
+      return { kind:'conflict', msg:`${nm} 已存過，但證號不同（已存：${xno}）` };
+    }
   }
   return null;
 }
+function sameBirth(a, b) { const ad = r => (r.birthAd || r.birth || '').replace(/\D/g, ''); return ad(a) && ad(a) === ad(b); }
 // 清單上標出彼此衝突的資料
 function conflictSet(a) {
   const bad = new Set();
   a.forEach((r, i) => a.forEach((x, j) => {
     if (i >= j) return;
     const sameNo = primaryNo(r) && primaryNo(r) === primaryNo(x), sameNm = primaryName(r) && primaryName(r) === primaryName(x);
-    if ((sameNo && (primaryName(r) !== primaryName(x) || (r.birth||'') !== (x.birth||''))) || (sameNm && !sameNo && primaryNo(r) && primaryNo(x))) { bad.add(i); bad.add(j); }
+    if ((sameNo && (primaryName(r) !== primaryName(x) || (r.birth||'') !== (x.birth||''))) || (sameNm && !sameNo && primaryNo(r) && primaryNo(x) && !(r.birth && x.birth))) { bad.add(i); bad.add(j); }
   }));
   return bad;
 }

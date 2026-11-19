@@ -197,7 +197,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/20-h</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/20-i</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -818,7 +818,7 @@ function guessType(lines) {
   const all = lines.map(L => L.t).join(' ');
   if (/居留|Resident|ARC\b/i.test(all)) return 'arc';
   if (/健康保|HEALTH\s*INS/i.test(all)) return 'nhi';
-  if (/駕駛執照|駕照號碼|交通部製發/.test(all)) return 'dl';
+  if (/駕駛執照|駕照號碼|交通部|驾驶|執照|执照|[重輕轻]型機車|[重輕轻]型机车|汽車駕|大[貨货]車|小型車/.test(all)) return 'dl';
   if (/<<|PASSPORT|護照號|HO\s*CHIEU/i.test(all)) return 'passport';
   if (/BIRTHPLACE|身分證號碼|出生地/i.test(all)) return 'seaman';
   if (/國民身分證|統一編號|發證日期/.test(all)) return 'id';

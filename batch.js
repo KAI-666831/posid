@@ -76,9 +76,23 @@ function docBox(boxes, W, H) {
   return { x0: Math.max(0, x0 - mw), y0: Math.max(0, y0 - mh), x1: Math.min(1, x1 + mw), y1: Math.min(1, y1 + mh) };
 }
 
-async function batchOne(it, b) {
-  const photo = await loadPhoto(it.file);
-  const box = docBox(await detectLines(photo), photo.width, photo.height);
+function rotCanvas(img, deg) {
+  const c = document.createElement('canvas'), r = deg % 180 !== 0;
+  c.width = r ? img.height : img.width; c.height = r ? img.width : img.height;
+  const g = c.getContext('2d'); g.translate(c.width / 2, c.height / 2); g.rotate(deg * Math.PI / 180); g.drawImage(img, -img.width / 2, -img.height / 2);
+  return c;
+}
+async function batchOne(it, b, rot) {
+  let photo = await loadPhoto(it.file);
+  let boxes = await detectLines(photo);
+  // 證件直放拍（字是直的）：直的框比橫的多 → 轉 90 度再讀
+  if (rot === undefined) {
+    const tall = boxes.filter(q => (q.y1 - q.y0) * photo.height > (q.x1 - q.x0) * photo.width * 1.5).length;
+    const wide = boxes.filter(q => (q.x1 - q.x0) * photo.width > (q.y1 - q.y0) * photo.height * 1.5).length;
+    rot = tall > wide && tall >= 4 ? 90 : 0;
+  }
+  if (rot) { photo = rotCanvas(photo, rot); boxes = await detectLines(photo); }
+  const box = docBox(boxes, photo.width, photo.height);
   const ocrText = ls => (ls || []).map(L => `${L.t}　@${L.x0.toFixed(2)},${L.y0.toFixed(2)}-${L.x1.toFixed(2)},${L.y1.toFixed(2)}`).join('\n');
   const logFail = async (msg, r, ls) => dbgSave({ kind: 'fail', img: await smallPhoto(photo), msg, got: dbgPick(r), ocr: ocrText(ls) });
   if (!box) { it.st = 'fail'; it.msg = '找不到證件上的字（太遠、太暗或反光）'; await logFail(it.msg, {}, []); return; }
@@ -87,16 +101,19 @@ async function batchOne(it, b) {
   card.getContext('2d').drawImage(photo, box.x0 * photo.width, box.y0 * photo.height, sw, sh, 0, 0, card.width, card.height);
   const lines = await readAllLines(card, (i, n) => { it.msg = `辨識中… ${i}/${n}`; batchRender(); });
   if (b.cancel) return;
+  // 轉了 90 度還認不出是什麼證件：可能轉反了，換另一個方向
+  if (rot === 90 && !guessType(lines)) return batchOne(it, b, 270);
   const type = guessType(lines) || 'id';
   setType(type);
   let r = null;
   if (type === 'id') {
     // 身分證：先用「姓名」「出生」標籤的位置推算整張卡的範圍，只看卡片裡面（旁邊紙上別人的資料不會混進來）
-    let idLines = lines, idCard = card;
+    let idLines = lines, idCard = card, cbP = null;
     const cb = idCardBox(lines, card.width, card.height);
     if (cb) {
       // 直接從原始照片裁（比較清楚；而且卡片可能有一部分在剛剛的範圍外面）
       const k = sw / card.width, px = box.x0 * photo.width + cb.x * k, py = box.y0 * photo.height + cb.y * k;
+      cbP = { x: px, y: py, w: cb.w * k, h: cb.h * k };
       idCard = document.createElement('canvas'); idCard.width = 1600; idCard.height = Math.round(1600 / CARD);
       const g2 = idCard.getContext('2d'); g2.fillStyle = '#fff'; g2.fillRect(0, 0, idCard.width, idCard.height);
       g2.drawImage(photo, px, py, cb.w * k, cb.h * k, 0, 0, idCard.width, idCard.height);
@@ -136,6 +153,38 @@ async function batchOne(it, b) {
         for (const L of shaped) { const v = await fixIdByAlt(card, L); if (v) { r.idno = v; un.add('idno'); break; } }
       }
     }
+    // 還是沒有：直接讀卡片右下角號碼的位置（反光時偵測常漏掉這一塊）
+    if (!validId(r.idno || '')) {
+      // 推算的卡片範圍裡試幾個高度；再用「發證日期」那一列的高度，在裁切照片的右半邊找
+      // 卡片範圍推算可能偏小：從原始照片裁「卡片右下角再往右多一點」
+      const zone = (fx0, fy0, fx1, fy1) => {
+        const x0 = Math.max(0, cbP.x + fx0 * cbP.w), y0 = Math.max(0, cbP.y + fy0 * cbP.h), x1 = Math.min(photo.width, cbP.x + fx1 * cbP.w), y1 = Math.min(photo.height, cbP.y + fy1 * cbP.h);
+        const c = document.createElement('canvas'); c.width = Math.max(16, Math.round(x1 - x0)); c.height = Math.max(8, Math.round(y1 - y0));
+        c.getContext('2d').drawImage(photo, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height); return c;
+      };
+      const tries = cbP ? [[0.82, 0.97], [0.78, 0.93], [0.86, 1.02], [0.80, 1.0]].map(([a, b2]) => [zone(0.62, a, 1.15, b2), 0, 0, 1, 1]) : [];
+      const il = lines.find(L => /發證|发证|日期/.test(L.t.replace(/\s/g, '')) && L.x0 < 0.4);
+      if (il) { const h = il.y1 - il.y0; tries.push([card, 0.58, il.y0 - h * 0.4, 1.0, il.y1 + h * 0.5], [card, 0.58, il.y0 - h, 1.0, il.y1], [card, 0.58, il.y0, 1.0, il.y1 + h]); }
+      for (const [img, x0, y0, x1, y1] of tries) {
+        const s = (await recRegion(img, x0, y0, x1, y1)).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const m = s.match(/[A-Z][12]\d{8}/);
+        if (m && validId(m[0])) { r.idno = m[0]; un.add('idno'); break; }
+      }
+    }
+    // 生日被拆成好幾段（「民國」「84」「10月27日」）：把出生那一列的字接起來再找
+    if (!birthOk('id', r.birth)) {
+      const bl = idLines.find(L => /^出|年月日/.test(L.t.replace(/\s/g, '')) && L.x0 < 0.3);
+      if (bl) {
+        const row = idLines.filter(L => L !== bl && L.x0 > bl.x1 - 0.02 && L.cx < 0.66 && L.y0 < bl.y1 + 0.03 && L.y1 > bl.y0 - 0.06).sort((a, b) => a.x0 - b.x0);
+        const t = row.map(L => L.t).join('').replace(/\s/g, '');
+        // 「年」被讀掉時「8410月」分不出來：年份試 2 位和 3 位，取合理的
+        for (const yl of [2, 3]) {
+          const m = t.match(new RegExp(`民[國国]?(\\d{${yl}})\\D{0,3}(\\d{1,2})月(\\d{1,2})`));
+          const v = m && `${+m[1]}/${pad2(m[2])}/${pad2(m[3])}`;
+          if (v && +m[2] >= 1 && +m[2] <= 12 && birthOk('id', v)) { r.birth = v; un.add('birth'); break; }
+        }
+      }
+    }
     if (r.birth) r.birthAd = rocToAd(r.birth).replace('西元 ', '');
     r.sex = $('sex').value || inferSex(r);
     if (!cb) ['name', 'birth', 'idno'].forEach(k => un.add(k));   // 找不到卡片範圍：全部標請核對
@@ -147,6 +196,9 @@ async function batchOne(it, b) {
   if (!recordOk(r)) {
     it.st = 'fail';
     it.msg = `沒讀完整（${[!primaryName(r) && '姓名', !birthOk(r.type, r.birth) && '生日', !(validId(r.idno || '') || (EN_FIRST(r.type) && r.ppno)) && '號碼'].filter(Boolean).join('、')}）`;
+    // 號碼貼著照片邊緣、只讀到 7～9 碼：是被切到了
+    if (!validId(r.idno || '') && lines.some(L => /^[A-Z][12]\d{5,7}$/.test(L.t.replace(/\s/g, '')) && (L.x1 > 0.93 || L.y1 > 0.97))) it.msg += '：號碼在照片邊緣被切到，請整張拍進去';
+    else if (!box || (box.x1 - box.x0) * (box.y1 - box.y0) < 0.12) it.msg += '：證件在照片裡太小，請拍近一點';
     await logFail(it.msg, r, lines);
     return;
   }
