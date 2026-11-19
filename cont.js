@@ -68,7 +68,8 @@ async function openContinuous(grp, chain) {
   contOpening = true;
   try { await openCamera(); } finally { contOpening = false; }
   if (!stream) { if (grp) { grpRequeue(grp); if (typeof groupDone === 'function') groupDone(0, grp.want, grp); } return; }
-  let base = 'auto'; try { base = localStorage.getItem('idscan_cont_base') || 'auto'; } catch {}
+  let base = 'id'; try { base = localStorage.getItem('idscan_cont_base') || 'id'; } catch {}
+  if (base === 'auto') base = 'id';   // 「自」已拿掉：改成手動選證件，比較快
   cont = { base, state: 'seek', prev: null, still: 0, sig: null, count: 0, busy: false, audio: contAudio, fails: 0, grp, got: grp ? (grp.got || 0) : 0, chain: grp ? chain || null : null };
   $('shutter').style.display = 'none';
   $('contBar').style.display = 'block'; $('contCount').textContent = '0';

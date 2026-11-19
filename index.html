@@ -180,7 +180,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-j</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-k</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -315,7 +315,7 @@
   <div id="zoomRow"><input id="zoom" type="range" min="0.3" max="4" step="0.01" value="1"></div>
   <div id="contRecent"></div>
   <div id="contTypes">
-    <button data-b="auto">自</button><button data-b="id">身</button><button data-b="arc">居</button><button data-b="passport">護</button>
+    <button data-b="id">身</button><button data-b="arc">居</button><button data-b="passport">護</button>
     <button data-b="seaman">船</button><button data-b="nhi">健</button><button data-b="dl">駕</button>
   </div>
   <div id="contFlash" style="position:absolute;inset:0;opacity:0;transition:opacity .3s;pointer-events:none"></div>
@@ -501,10 +501,27 @@ addEventListener('resize', placeFrame);
 
 let stream = null, mode = null;
 async function openCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', width:{ideal:3840}, height:{ideal:2160} }, audio:false });
-  } catch (e) {
-    alert('無法開啟相機，請改用「從相簿選擇」。\n' + e.message); return;
+  // 固定用「後置相機」（一般廣角）：iPhone 的「雙廣角／三鏡頭」近距離會自動切換超廣角微距，畫面會跳上跳下
+  const RES = { width:{ideal:3840}, height:{ideal:2160} };
+  const WIDE = /^(back camera|後置相機|后置相机|背面カメラ)$/i;
+  const cached = (() => { try { return localStorage.getItem('posid_cam') || ''; } catch { return ''; } })();
+  stream = null;
+  if (cached) { try { stream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: cached }, ...RES }, audio:false }); } catch {} }
+  if (!stream) {
+    try { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', ...RES }, audio:false }); }
+    catch (e) { alert('無法開啟相機，請改用「從相簿選擇」。\n' + e.message); return; }
+    try {
+      const tr = stream.getVideoTracks()[0];
+      if (!WIDE.test((tr.label || '').trim())) {
+        const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+        const w = cams.find(d => WIDE.test((d.label || '').trim()));
+        if (w) {
+          stream.getTracks().forEach(t => t.stop());
+          try { stream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: w.deviceId }, ...RES }, audio:false }); localStorage.setItem('posid_cam', w.deviceId); }
+          catch { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', ...RES }, audio:false }); }
+        }
+      } else { try { localStorage.setItem('posid_cam', tr.getSettings().deviceId || ''); } catch {} }
+    } catch {}
   }
   mode = 'camera';
   $('video').srcObject = stream; $('video').style.display = 'block';
