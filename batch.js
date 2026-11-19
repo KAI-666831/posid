@@ -87,10 +87,20 @@ async function batchOne(it, b) {
   if (b.cancel) return;
   const type = guessType(lines) || 'id';
   setType(type);
-  await runOcr(card, type === 'id' ? undefined : lines);
-  let r = collectRecord(); r.sex = $('sex').value || inferSex(r);
+  let r = null;
+  // 身分證快速路線：剛剛讀全部文字時已經有姓名、生日、證號，就不用再跑一次身分證專用讀法（省一半時間）
+  const quick = type === 'id' ? { type:'id', ...parseIdLines(lines) } : null;
+  if (quick && quick._byLabel && recordOk(quick)) {     // 名字要在「姓名」同一列才信，不然走完整讀法
+    clearFields(); r = quick; delete r._byLabel;
+    r.birthAd = rocToAd(r.birth).replace('西元 ', ''); r.sex = inferSex(r);
+    lastUnsure = []; try { lastCrop = await makeCrop(card, 'id'); } catch { lastCrop = null; }
+  } else {
+    await runOcr(card, type === 'id' ? undefined : lines);
+    r = collectRecord(); r.sex = $('sex').value || inferSex(r);
+  }
   if (type === 'id' && !recordOk(r)) {                 // 身分證專用讀法要裁得很準；不準時改用文字標籤找
     const p = parseIdLines(lines);
+    delete p._byLabel;
     r = { ...r, ...Object.fromEntries(Object.entries(p).filter(([k, v]) => v && !(k === 'idno' && validId(r.idno || '')))) };
   }
   if (!recordOk(r)) {
@@ -124,11 +134,14 @@ function parseIdLines(lines) {
   }
   const lbl = lines.find(L => /^姓名/.test(L.t.replace(/\s/g, '')));
   const clean = L => L.t.replace(/\s/g, '').replace(/^姓名/, '');
-  let cand = lines.filter(L => /^[一-鿿]{2,4}$/.test(clean(L)) && !LABELS.test(clean(L)) && !/身分證|中華民國|出生|發證|性別|日期/.test(clean(L)));
+  let cand = lines.filter(L => /^[一-鿿]{2,4}$/.test(clean(L)) && !LABELS.test(clean(L)) && !/身分證|中華民國|出生|發證|性別|日期|樣本|測試|真實/.test(clean(L)));
   if (lbl) {
-    const same = cand.filter(L => Math.abs(L.cy - lbl.cy) < (lbl.y1 - lbl.y0) * 1.2);
-    if (same.length) cand = same;
+    // 身分證的名字字距很開，常被切成一個字一個字：把「姓名」同一列右邊的中文接起來
+    const row = lines.filter(L => L !== lbl && Math.abs(L.cy - lbl.cy) < (lbl.y1 - lbl.y0) * 1.2 && L.x0 > lbl.x0 && L.x0 < 0.68)
+      .sort((a, b) => a.x0 - b.x0).map(L => L.t.replace(/[^一-鿿]/g, '')).join('').replace(/^姓名/, '');
+    if (/^[一-鿿]{2,4}$/.test(row) && !LABELS.test(row)) { r.name = row; r._byLabel = true; }
   }
+  if (r._byLabel) return r;
   const best = cand.sort((a, b) => (b.y1 - b.y0) - (a.y1 - a.y0))[0];   // 名字字最大
   if (best) r.name = clean(best);
   return r;
