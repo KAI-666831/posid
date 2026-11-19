@@ -209,7 +209,7 @@ async function refineIdName(lines, img) {
   for (let k = 0; k <= 3; k++) {
     const sx = c1 + k * p; if (sx > 0.78) break;
     const hit = cands.filter(c => Math.abs(c.cx - sx) < p * 0.3).sort((a, b) => Math.abs(a.cx - sx) - Math.abs(b.cx - sx))[0];
-    let ch = hit ? hit.c : '';
+    let ch = hit && (k < 3 || (hit.p || 0) > 0.9) ? hit.c : '';   // 第 4 個字（複姓）要很有把握才算，不然常是照片、防偽圖案
     if (!ch && img && k <= 2 && !cands.some(c => Math.abs(c.cx - sx) < p * 0.6)) {   // 第 4 格不補讀（會讀到照片）   // 這一格附近完全沒讀到字：單獨裁這一格再讀
       const t = await recRegion(img, sx - cw * 0.7, y0, sx + cw * 0.7, y1);
       const m = (t || '').match(/[一-鿿]/);
