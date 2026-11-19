@@ -117,8 +117,10 @@ async function batchOne(it, b) {
       const a = (pr[k] || '').trim(), bq = (q[k] || '').trim();
       const okA = k === 'idno' ? validId(a) : k === 'birth' ? birthOk('id', a) : a.length >= 2;
       const okB = k === 'idno' ? validId(bq) : k === 'birth' ? birthOk('id', bq) : bq.length >= 2;
-      if (okB) { r[k] = bq; if (!okA || a !== bq) un.add(k); else un.delete(k); }   // 兩種讀法一樣才算有把握
-      else { r[k] = okA ? a : ''; un.add(k); }
+      // 兩種讀法讀到「不一樣」才標請核對；只有一種讀到（另一種沒讀到）時：號碼有檢查碼、生日有對齊標籤，不標；名字還是標
+      if (okA && okB) { r[k] = bq; if (a !== bq) un.add(k); else un.delete(k); }
+      else if (okA || okB) { r[k] = okB ? bq : a; if (k === 'name') un.add(k); else un.delete(k); }
+      else { r[k] = ''; un.add(k); }
     }
     if (r.birth) r.birthAd = rocToAd(r.birth).replace('西元 ', '');
     r.sex = $('sex').value || inferSex(r);

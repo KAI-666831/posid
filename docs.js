@@ -169,6 +169,19 @@ function parseNhi(lines) {
   return r;
 }
 
+// ---------- 用英文拼音核對中文的姓（船員證、護照同時有中英文名字）----------
+// 中文的姓跟英文拼音對不上、而拼音只對得到一個姓 → 換成那個姓並標「請核對」（例如 JUANG 對到「莊」，讀成「菲」時改回來）
+const SURNAMES = (() => { const m = {}; '陳:CHEN,CHERN,CHAN,TAN|林:LIN,LIM,LAM|黃:HUANG,HWANG|張:CHANG,ZHANG,CHEUNG|李:LI,LEE|王:WANG|吳:WU,WOO|劉:LIU,LAU|蔡:TSAI,CAI,TSAY|楊:YANG,YEUNG|許:HSU,XU,SHIU|鄭:CHENG,ZHENG,JHENG|謝:HSIEH,XIE,SIE,SHIEH|郭:KUO,GUO,KWOK|洪:HUNG,HONG|邱:CHIU,QIU,CHIOU|曾:TSENG,ZENG,TZENG|廖:LIAO|賴:LAI|徐:HSU,XU,SYU|周:CHOU,ZHOU,JOU|葉:YEH,YE,YIP|蘇:SU|莊:CHUANG,ZHUANG,JUANG,JHUANG|呂:LU,LYU,LEU|江:CHIANG,JIANG|何:HO,HE|蕭:HSIAO,XIAO,SIAO|羅:LO,LUO|高:KAO,GAO|潘:PAN|簡:CHIEN,JIAN|朱:CHU,ZHU,JHU|鍾:CHUNG,ZHONG,JHONG|彭:PENG|游:YU,YOU|詹:CHAN,ZHAN,JHAN|胡:HU|施:SHIH,SHI|沈:SHEN|余:YU,YEE|趙:CHAO,ZHAO,JHAO|盧:LU,LOO|梁:LIANG,LEUNG|顏:YEN,YAN|柯:KO,KE,KOH|孫:SUN|魏:WEI|翁:WENG|戴:TAI,DAI|范:FAN|宋:SUNG,SONG|方:FANG|鄧:TENG,DENG|杜:TU,DU|傅:FU|侯:HOU|曹:TSAO,CAO|薛:HSUEH,XUE,SYUE|丁:TING,DING|卓:CHO,ZHUO,JHUO|阮:JUAN,RUAN|馬:MA|董:TUNG,DONG|溫:WEN|唐:TANG|藍:LAN|石:SHIH,SHI|蔣:CHIANG,JIANG|古:KU,GU|紀:CHI,JI|姚:YAO|連:LIEN,LIAN|馮:FENG|歐:OU|程:CHENG|湯:TANG|田:TIEN,TIAN|康:KANG|姜:CHIANG,JIANG|白:PAI,BAI|汪:WANG|鄒:TSOU,ZOU|尤:YU,YOU|巫:WU|黎:LI|涂:TU|龔:KUNG,GONG|嚴:YEN,YAN|韓:HAN|袁:YUAN|金:CHIN,JIN|童:TUNG,TONG|陸:LU|夏:HSIA,XIA|柳:LIU|邵:SHAO|錢:CHIEN,QIAN|伍:WU|倪:NI|于:YU|譚:TAN,TAM|駱:LO,LUO|熊:HSIUNG,XIONG|任:JEN,REN|甘:KAN,GAN|秦:CHIN,QIN|顧:KU,GU|毛:MAO|章:CHANG,ZHANG|史:SHIH,SHI|官:KUAN,GUAN|萬:WAN|俞:YU|雷:LEI|粘:NIEN,NIAN|饒:JAO,RAO|陶:TAO|易:YI|凌:LING|殷:YIN|談:TAN|段:TUAN,DUAN|鄭:CHENG'.split('|').forEach(e => { const [z, rs] = e.split(':'); rs.split(',').forEach(r => (m[r] = m[r] || []).includes(z) || m[r].push(z)); }); return m; })();
+const ALL_SUR = new Set(Object.values(SURNAMES).flat());
+function fixSurname(r, enSurname) {
+  const zh = r.name || '', s = (enSurname || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (zh.length < 2 || !s) return;
+  const c = SURNAMES[s]; if (!c) return;                 // 拼音不在表上：不動
+  if (c.includes(zh[0])) return;                         // 對得上
+  if (c.length === 1) { r.name = c[0] + zh.slice(1); r._surFix = true; }
+  else r._surFix = true;                                 // 拼音對到好幾個姓（例如 HSU：許、徐）：不改，只標請核對
+}
+
 // ---------- 船員服務手冊（只取中文姓名）----------
 async function parseSeaman(lines, img) {
   const r = {};
@@ -201,6 +214,9 @@ async function parseSeaman(lines, img) {
   const best = keys.map(k => [k, score(k)]).sort((a,b) => b[1]-a[1] || b[0].length - a[0].length)[0];
   r.name = best ? best[0] : '';
   r._nameConf = best ? (votes[best[0]] || 0) : 0;     // 一模一樣的結果讀到幾次：少於 2 次就沒把握
+  // 英文姓名那一行：第一個字是表上的姓氏拼音的那一行（不一定是第一個英文行，前面可能有 NAME 標籤）
+  const enSur = lines.filter(L => L.cy < lim + 0.02).map(L => L.t.toUpperCase().replace(/[^A-Z\s]/g, ' ').trim().split(/\s+/)[0]).find(w => SURNAMES[w]);
+  if (enSur) fixSurname(r, enSur);
   return r;
 }
 
@@ -250,5 +266,6 @@ function parsePassportLines(lines) {
   // 資料頁印的「姓, 名」（一整行，例如 CHEN, KUO-CHIANG）比 MRZ 好讀（MRZ 的 < 常跟 I、K 黏在一起讀錯），有就優先用
   const printed = lines.map(L => L.t.toUpperCase().replace(/\s+/g, ' ').trim()).find(t => /^[A-Z]{2,}(?: [A-Z]+)?\s*,\s*[A-Z]+(?:[ -][A-Z]+){0,3}$/.test(t) && t.length <= 40);
   if (printed) r.nameEn = printed.replace(/\s*,\s*/, ', ');
+  if (r.name && r.nameEn) fixSurname(r, r.nameEn.split(/[\s,]+/)[0]);
   return r;
 }
