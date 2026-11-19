@@ -58,6 +58,18 @@ function grpAdvance() {
 function grpTag(r) { if (cont && cont.grp) r.grp = cont.grp.id; return r; }
 function grpNames(g) { return load().filter(r => r.grp === g.id).map(r => primaryName(r) || primaryNo(r)); }
 
+// 收銀刪掉那筆結帳（按錯）：這一組也刪掉。組號不重排（盒子裡的格子號碼才不會亂）
+function grpVoid(id, fromPeer) {
+  const g = grpById(id); if (!g) return;
+  if (cont && cont.grp === g) { toast(`${grpLabel(g)} 正在掃，先結束掃描再刪`, true); return; }
+  groups = groups.filter(x => x !== g); grpSave(); grpRender();
+  const n = grpNames(g).length;
+  toast(`${grpLabel(g)} 已刪除${n ? `（已掃的 ${n} 位還留在名單）` : ''}`);
+  if (typeof duoRole === 'function' && !fromPeer) {
+    if (duoRole() === 'pos') { duoOut = duoOut.filter(x => x.id !== id); duoSave(); duoSend('void', { id }).catch(() => {}); duoRender(); }
+  }
+}
+
 // ---------- 畫面：今日各組 ----------
 function grpRender() {
   const el = $('grpBody'); if (!el) return;

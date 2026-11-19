@@ -735,6 +735,7 @@
       pendingDel = null;
       const o = dayOrders.find(x => x.id === id);
       deleteOrder(o); toast('已刪除');
+      if (EMBED) parent.postMessage({ type:'posid-void', order: id }, location.origin);   // 證件那邊的這一組也一起刪
     });
     $('#copySum').onclick = async () => {
       const txt = `${viewDay}${statShift ? ' ' + nameOf(statShift) : ''} 營業統計\n營業額 ${money(revenue)}｜${list.length} 筆｜${qty} 件\n` +

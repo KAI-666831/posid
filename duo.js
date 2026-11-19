@@ -90,6 +90,7 @@ async function duoFlush() {
 function duoOnMsg(m) {
   duoPeer = Date.now();
   const role = duoRole();
+  if (role === 'scan' && m.kind === 'void') grpVoid(m.data.id, true);
   if (role === 'scan' && m.kind === 'group') {
     const g = m.data;
     duoSend('ack', { id: g.id }).catch(() => {});

@@ -90,6 +90,7 @@
   #tabs { position:fixed; left:0; right:0; top:0; z-index:6; display:flex; gap:6px; padding:calc(env(safe-area-inset-top) + 8px) 12px 8px;
           background:var(--bg); border-bottom:1px solid rgba(0,0,0,.08); }
   #tabs button { flex:1; padding:10px 0; font-size:16px; border-radius:10px; background:transparent; color:var(--fg); border:1px solid rgba(127,127,127,.35); }
+  #tabs button { width:auto; min-width:0; margin:0; white-space:nowrap; }
   #tabs #qBtn { flex:0 0 auto; padding:10px 12px; background:#f59e0b; color:#111; border-color:#f59e0b; font-weight:700; }
   .g-row { padding:10px 0; border-top:1px solid rgba(127,127,127,.2); }
   .g-h { display:flex; gap:8px; align-items:baseline; } .g-h small { color:var(--muted); } .g-amt { margin-left:auto; font-variant-numeric:tabular-nums; }
@@ -178,7 +179,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-h</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-i</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -1014,6 +1015,7 @@ function showTab(t) {
 document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 // 收銀結帳＝一組客人。馬上掃：直接進連續掃描、掃滿回收銀；等一下掃：先排隊
 window.addEventListener('message', e => {
+  if (e.origin === location.origin && e.data && e.data.type === 'posid-void') { grpVoid(e.data.order); return; }
   if (e.origin !== location.origin || !e.data || e.data.type !== 'posid-scan') return;
   const d = e.data;
   const g = grpAdd({ id: d.order, want: d.n, desc: d.desc || '', total: d.total, later: d.later });
