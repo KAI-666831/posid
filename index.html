@@ -185,7 +185,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-l</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-m</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -477,11 +477,11 @@ function applyZoom() {
   v.style.transform = cssZ > 1 ? `scale(${cssZ})` : '';
   const el = $('highUI'); if (!el) return;
   el.style.display = mode === 'camera' && stream ? 'flex' : 'none';
-  el.innerHTML = !h.on ? `<button onclick="highSet({...highCfg(),on:true})">架高模式：關</button>`
+  el.innerHTML = `<button onclick="switchLens()">鏡頭：${lensMode() === 'wide' ? '廣角' : '自動'}</button>` + (!h.on ? `<button onclick="highSet({...highCfg(),on:true})">架高模式：關</button>`
     : `<button onclick="highSet({...highCfg(),on:false})">架高：開</button>` +
       (ZOOM_TYPES.includes(curKind())
         ? `<button onclick="highSet({...highCfg(),z:Math.max(1,Math.round((highCfg().z-0.05)*100)/100)})">－</button><b>${h.z.toFixed(2)}×</b><button onclick="highSet({...highCfg(),z:Math.min(3,Math.round((highCfg().z+0.05)*100)/100)})">＋</button>`
-        : '<span>這類不放大</span>');
+        : '<span>這類不放大</span>'));
   if (typeof showCamRes === 'function') showCamRes();
 }
 function innerRect() {
@@ -505,29 +505,42 @@ function placeFrame() {
 addEventListener('resize', placeFrame);
 
 let stream = null, mode = null;
-async function openCamera() {
-  // 固定用「後置相機」（一般廣角）：iPhone 的「雙廣角／三鏡頭」近距離會自動切換超廣角微距，畫面會跳上跳下
+// 鏡頭：自動（iPhone 自己切換，近距離會切到超廣角微距、畫面會跳）／廣角（固定一般鏡頭不跳，但要離證件約 20 公分以上才對得到焦）
+const lensMode = () => { try { return localStorage.getItem('posid_lens') || 'auto'; } catch { return 'auto'; } };
+async function getStream() {
   const RES = { width:{ideal:3840}, height:{ideal:2160} };
+  const env = () => navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', ...RES }, audio:false });
+  if (lensMode() !== 'wide') return env();
   const WIDE = /^(back camera|後置相機|后置相机|背面カメラ)$/i;
   const cached = (() => { try { return localStorage.getItem('posid_cam') || ''; } catch { return ''; } })();
+  if (cached) { try { return await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: cached }, ...RES }, audio:false }); } catch {} }
+  let st = await env();
+  try {
+    const tr = st.getVideoTracks()[0];
+    if (WIDE.test((tr.label || '').trim())) { localStorage.setItem('posid_cam', tr.getSettings().deviceId || ''); return st; }
+    const w = (await navigator.mediaDevices.enumerateDevices()).find(d => d.kind === 'videoinput' && WIDE.test((d.label || '').trim()));
+    if (w) {
+      st.getTracks().forEach(t => t.stop());
+      try { st = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: w.deviceId }, ...RES }, audio:false }); localStorage.setItem('posid_cam', w.deviceId); }
+      catch { st = await env(); }
+    }
+  } catch {}
+  return st;
+}
+async function switchLens() {
+  try { localStorage.setItem('posid_lens', lensMode() === 'wide' ? 'auto' : 'wide'); } catch {}
+  if (!stream) { applyZoom(); return; }
+  stream.getTracks().forEach(t => t.stop());
+  try { stream = await getStream(); } catch (e) { alert('相機開不起來：' + e.message); return; }
+  $('video').srcObject = stream;
+  try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+  applyZoom();
+  toast(lensMode() === 'wide' ? '鏡頭：固定廣角（不會跳，手機要離證件約 20 公分以上）' : '鏡頭：自動（近距離對焦，可能會跳）');
+}
+async function openCamera() {
   stream = null;
-  if (cached) { try { stream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: cached }, ...RES }, audio:false }); } catch {} }
-  if (!stream) {
-    try { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', ...RES }, audio:false }); }
-    catch (e) { alert('無法開啟相機，請改用「從相簿選擇」。\n' + e.message); return; }
-    try {
-      const tr = stream.getVideoTracks()[0];
-      if (!WIDE.test((tr.label || '').trim())) {
-        const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-        const w = cams.find(d => WIDE.test((d.label || '').trim()));
-        if (w) {
-          stream.getTracks().forEach(t => t.stop());
-          try { stream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: w.deviceId }, ...RES }, audio:false }); localStorage.setItem('posid_cam', w.deviceId); }
-          catch { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', ...RES }, audio:false }); }
-        }
-      } else { try { localStorage.setItem('posid_cam', tr.getSettings().deviceId || ''); } catch {} }
-    } catch {}
-  }
+  try { stream = await getStream(); }
+  catch (e) { alert('無法開啟相機，請改用「從相簿選擇」。\n' + e.message); return; }
   mode = 'camera';
   $('video').srcObject = stream; $('video').style.display = 'block';
   $('still').style.display = 'none'; $('zoomRow').style.display = 'none';

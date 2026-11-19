@@ -202,7 +202,8 @@ function parsePassportLines(lines) {
   const ts = lines.map(L => L.t.toUpperCase().replace(/\s/g,'').replace(/[>«‹]/g,'<'));
   for (const t of ts) { const m2 = parseMrz2(t); if (m2) { r.ppno = m2.doc; r.nat = m2.nat; r.birth = m2.dob;
     const tw = m2.opt.match(/[A-Z][12]\d{8}/); if (tw && validId(tw[0])) r.idno = tw[0]; r.mrz = true; r.sex = m2.sex === 'F' ? '女' : m2.sex === 'M' ? '男' : ''; break; } }
-  for (const t of ts) { const u = t.replace(/^P[^A-Z<]/, 'P<'); if (!/^P[A-Z<]/.test(u) || !/<</.test(u)) continue;
+  for (const t of ts) { let u = t.replace(/^P[^A-Z<]/, 'P<'); if (/^PTWN/.test(u) || (u.length === 43 && /^P[A-Z]{4}/.test(u))) u = 'P<' + u.slice(1);   // 漏讀 P 後面的 <
+    if (!/^P[A-Z<]/.test(u) || !/<</.test(u)) continue;
     const m1 = parseMrz1(u); if (m1) { r.nameEn = m1.name; break; } }
   const tw = r.nat === 'TWN' || lines.some(L => /REPUBLIC\s*OF\s*CHINA|中華民國/i.test(L.t));
   if (!r.idno && tw) { const ids = findIds(lines.filter(L => !/<</.test(L.t))); if (ids.length) r.idno = ids[0].v; }
@@ -234,8 +235,12 @@ function parsePassportLines(lines) {
       const txt = row.map(L => L.t).join(' ');
       const zh = txt.match(/[一-鿿]{2,4}/); if (zh && !r.name) r.name = zh[0];
       const en = txt.replace(/[一-鿿]/g, '').toUpperCase().replace(/[^A-Z ,-]/g, ' ').replace(/\s+/g, ' ').trim();
+      // 資料頁印的「姓, 名」比 MRZ 好讀（MRZ 的 < 容易跟 I、K 黏在一起讀錯），有就優先用
       if (!r.nameEn && en.length >= 2) r.nameEn = en.replace(/\s*,\s*/, ', ');
     }
   }
+  // 資料頁印的「姓, 名」（一整行，例如 CHEN, KUO-CHIANG）比 MRZ 好讀（MRZ 的 < 常跟 I、K 黏在一起讀錯），有就優先用
+  const printed = lines.map(L => L.t.toUpperCase().replace(/\s+/g, ' ').trim()).find(t => /^[A-Z]{2,}(?: [A-Z]+)?\s*,\s*[A-Z]+(?:[ -][A-Z]+){0,3}$/.test(t) && t.length <= 40);
+  if (printed) r.nameEn = printed.replace(/\s*,\s*/, ', ');
   return r;
 }
