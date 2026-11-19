@@ -88,20 +88,44 @@ async function batchOne(it, b) {
   const type = guessType(lines) || 'id';
   setType(type);
   let r = null;
-  // 身分證快速路線：剛剛讀全部文字時已經有姓名、生日、證號，就不用再跑一次身分證專用讀法（省一半時間）
-  const quick = type === 'id' ? { type:'id', ...parseIdLines(lines) } : null;
-  if (quick && quick._byLabel && recordOk(quick)) {     // 名字要在「姓名」同一列才信，不然走完整讀法
-    clearFields(); r = quick; delete r._byLabel;
-    r.birthAd = rocToAd(r.birth).replace('西元 ', ''); r.sex = inferSex(r);
-    lastUnsure = []; try { lastCrop = await makeCrop(card, 'id'); } catch { lastCrop = null; }
+  if (type === 'id') {
+    // 身分證：先用「姓名」「出生」標籤的位置推算整張卡的範圍，只看卡片裡面（旁邊紙上別人的資料不會混進來）
+    let idLines = lines, idCard = card;
+    const cb = idCardBox(lines, card.width, card.height);
+    if (cb) {
+      // 直接從原始照片裁（比較清楚；而且卡片可能有一部分在剛剛的範圍外面）
+      const k = sw / card.width, px = box.x0 * photo.width + cb.x * k, py = box.y0 * photo.height + cb.y * k;
+      idCard = document.createElement('canvas'); idCard.width = 1600; idCard.height = Math.round(1600 / CARD);
+      const g2 = idCard.getContext('2d'); g2.fillStyle = '#fff'; g2.fillRect(0, 0, idCard.width, idCard.height);
+      g2.drawImage(photo, px, py, cb.w * k, cb.h * k, 0, 0, idCard.width, idCard.height);
+      const outside = cb.x < -0.03 * card.width || cb.y < -0.03 * card.height || cb.x + cb.w > card.width * 1.03 || cb.y + cb.h > card.height * 1.03;
+      const nx = v => (v * card.width - cb.x) / cb.w, ny = v => (v * card.height - cb.y) / cb.h;
+      // 推算的範圍不會剛剛好：放寬一點，但卡片外面一段距離的字（旁邊紙上的）不要
+      idLines = lines.map(L => ({ ...L, x0: nx(L.x0), x1: nx(L.x1), y0: ny(L.y0), y1: ny(L.y1), cx: nx(L.cx), cy: ny(L.cy) }))
+        .filter(L => L.cx > -0.04 && L.cx < 1.04 && L.cy > -0.06 && L.cy < 1.04);
+      if (outside) idLines = await readAllLines(idCard, (i, n) => { it.msg = `辨識中（卡片）… ${i}/${n}`; batchRender(); });   // 卡片有一部分剛剛沒讀到：整張卡重讀
+    }
+    // 兩種讀法都跑（專用讀法＋文字標籤），對得上才算有把握；對不上的欄位標「請核對」
+    const q = parseIdLines(idLines); delete q._byLabel;
+    await runOcr(idCard);
+    const pr = collectRecord();
+    const un = new Set(lastUnsure);
+    r = { ...pr };
+    // 相簿照片：以「文字標籤」讀法為主（不怕照片裁得不準），專用讀法拿來核對
+    for (const k of ['name', 'birth', 'idno']) {
+      const a = (pr[k] || '').trim(), bq = (q[k] || '').trim();
+      const okA = k === 'idno' ? validId(a) : k === 'birth' ? birthOk('id', a) : a.length >= 2;
+      const okB = k === 'idno' ? validId(bq) : k === 'birth' ? birthOk('id', bq) : bq.length >= 2;
+      if (okB) { r[k] = bq; if (!okA || a !== bq) un.add(k); else un.delete(k); }   // 兩種讀法一樣才算有把握
+      else { r[k] = okA ? a : ''; un.add(k); }
+    }
+    if (r.birth) r.birthAd = rocToAd(r.birth).replace('西元 ', '');
+    r.sex = $('sex').value || inferSex(r);
+    if (!cb) ['name', 'birth', 'idno'].forEach(k => un.add(k));   // 找不到卡片範圍：全部標請核對
+    lastUnsure = [...un];
   } else {
-    await runOcr(card, type === 'id' ? undefined : lines);
+    await runOcr(card, lines);
     r = collectRecord(); r.sex = $('sex').value || inferSex(r);
-  }
-  if (type === 'id' && !recordOk(r)) {                 // 身分證專用讀法要裁得很準；不準時改用文字標籤找
-    const p = parseIdLines(lines);
-    delete p._byLabel;
-    r = { ...r, ...Object.fromEntries(Object.entries(p).filter(([k, v]) => v && !(k === 'idno' && validId(r.idno || '')))) };
   }
   if (!recordOk(r)) {
     it.st = 'fail';
@@ -124,26 +148,54 @@ async function batchOne(it, b) {
   }
 }
 
-// 身分證：用文字標籤找（照片沒裁準時的備案）
+// 用「姓名」「出生」「發證日期」標籤的位置推算身分證整張卡的範圍（像素）
+// 實際身分證：姓名列在卡片高度 49%、出生 67%、發證日期 81%，「姓」字左緣在卡片寬度 6%
+function idCardBox(lines, cw, ch) {
+  const tt = L => L.t.replace(/\s/g, '');
+  const nl = lines.find(L => /^姓/.test(tt(L)) && L.x0 < 0.4);
+  if (!nl) return null;
+  const left = L => Math.abs(L.x0 - nl.x0) < 0.08;
+  const bl = lines.find(L => L !== nl && L.cy > nl.cy && left(L) && /^出|年月日/.test(tt(L)));
+  const il = lines.find(L => L !== nl && L.cy > nl.cy && left(L) && /發證|日期/.test(tt(L)));
+  const est = [];
+  if (bl) est.push((bl.cy - nl.cy) * ch / 0.18);
+  if (il) est.push((il.cy - nl.cy) * ch / 0.32);
+  if (!est.length) return null;
+  const Hc = est.reduce((a, b) => a + b) / est.length;
+  if (Hc < ch * 0.15) return null;
+  const Wc = Hc * CARD;
+  return { x: nl.x0 * cw - 0.06 * Wc, y: nl.cy * ch - 0.49 * Hc, w: Wc, h: Hc };
+}
+
+// 身分證：用文字標籤找（跟專用讀法互相核對）
 function parseIdLines(lines) {
   const r = {};
-  const ids = findIds(lines); if (ids.length) r.idno = ids[0].v;
+  // 證號：可能拍到旁邊紙上別人的號碼 → 取最靠右下的（身分證的號碼在右下角）
+  const inZone = L => L.cx > 0.5 && L.cx < 1.05 && L.cy > 0.68 && L.cy < 1.0;   // 身分證號碼在右下角
+  const ids = findIds(lines).sort((a, b) => (inZone(b.L) - inZone(a.L)) || ((b.L.cx + b.L.cy) - (a.L.cx + a.L.cy)));
+  if (ids.length) r.idno = ids[0].v;
+  // 生日：「民國 84 年 10 月 27 日」，「年」被反光蓋掉也要能讀；排除發證日期那一行；有好幾個取最早的
+  const bs = [];
+  const bLbl = lines.find(L => /^出|年月日/.test(L.t.replace(/\s/g, '')) && L.x0 < 0.3);
   for (const L of lines) {
-    const m = L.t.replace(/\s/g, '').match(/民國(\d{2,3})年(\d{1,2})月(\d{1,2})日/);
-    if (m) { r.birth = `${+m[1]}/${pad2(m[2])}/${pad2(m[3])}`; break; }
+    const t = L.t.replace(/\s/g, '');
+    if (/發證|補發|換發|初發|[(（](.{1,3})[)）]/.test(t)) continue;
+    const m = t.match(/民國?(\d{2,3})[^\d]{0,3}(\d{1,2})月(\d{1,2})日?/) || t.match(/^(\d{2,3})年(\d{1,2})月(\d{1,2})日?$/);
+    if (m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31) bs.push([+m[1], `${+m[1]}/${pad2(m[2])}/${pad2(m[3])}`, L]);
   }
-  const lbl = lines.find(L => /^姓名/.test(L.t.replace(/\s/g, '')));
-  const clean = L => L.t.replace(/\s/g, '').replace(/^姓名/, '');
-  let cand = lines.filter(L => /^[一-鿿]{2,4}$/.test(clean(L)) && !LABELS.test(clean(L)) && !/身分證|中華民國|出生|發證|性別|日期|樣本|測試|真實/.test(clean(L)));
+  // 跟「出生年月日」標籤同一列的優先（旁邊紙上的日期不要），沒有標籤才取最早的
+  const rowD = L => bLbl ? Math.abs(L.cy - bLbl.cy) / Math.max(0.01, bLbl.y1 - bLbl.y0) : 0;
+  bs.sort((a, b) => (rowD(a[2]) < 1.2) !== (rowD(b[2]) < 1.2) ? (rowD(a[2]) < 1.2 ? -1 : 1) : a[0] - b[0]);
+  if (bs.length) r.birth = bs[0][1];
+  // 姓名：「姓 名」標籤（可能被切成「姓」「名」兩塊，或跟名字黏在一起）同一列右邊的中文接起來
+  const tt = L => L.t.replace(/\s/g, '');
+  const lbl = lines.find(L => /^姓/.test(tt(L)) && L.x0 < 0.25);
   if (lbl) {
-    // 身分證的名字字距很開，常被切成一個字一個字：把「姓名」同一列右邊的中文接起來
-    const row = lines.filter(L => L !== lbl && Math.abs(L.cy - lbl.cy) < (lbl.y1 - lbl.y0) * 1.2 && L.x0 > lbl.x0 && L.x0 < 0.68)
-      .sort((a, b) => a.x0 - b.x0).map(L => L.t.replace(/[^一-鿿]/g, '')).join('').replace(/^姓名/, '');
+    const h = lbl.y1 - lbl.y0;
+    const row = [lbl, ...lines.filter(L => L !== lbl && Math.abs(L.cy - lbl.cy) < h * 1.2 && L.x0 > lbl.x0 && L.x0 < 0.68)]
+      .sort((a, b) => a.x0 - b.x0).map(L => tt(L).replace(/[^一-鿿]/g, '')).join('').replace(/^姓名?|^名/, '').replace(/^名/, '');
     if (/^[一-鿿]{2,4}$/.test(row) && !LABELS.test(row)) { r.name = row; r._byLabel = true; }
   }
-  if (r._byLabel) return r;
-  const best = cand.sort((a, b) => (b.y1 - b.y0) - (a.y1 - a.y0))[0];   // 名字字最大
-  if (best) r.name = clean(best);
   return r;
 }
 
