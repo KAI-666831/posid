@@ -98,11 +98,12 @@ function grpRender() {
     (today.length ? today.map(g => {
       const names = pos ? [] : grpNames(g);
       let st;
-      if (g.state === 'wait') st = `<span class="g-wait">待掃 ${g.got || 0}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 掃這組</button>`}`;
+      const imp = pos ? '' : ` <button class="g-btn" onclick="batchStart('${g.id}')">🖼 相簿匯入</button>`;
+      if (g.state === 'wait') st = `<span class="g-wait">待掃 ${g.got || 0}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 掃這組</button>`}${imp}`;
       else if (g.state === 'scan') st = `<span class="g-wait">掃描中</span>`;
       else if (g.state === 'sent') st = `<span class="g-wait">已送掃描機 · 0/${g.want}</span>`;
       else if (g.got >= g.want) st = `<span class="ok">✓ ${g.got}/${g.want}</span>`;
-      else st = `<span class="bad">只掃 ${g.got}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 補掃</button>`}`;
+      else st = `<span class="bad">只掃 ${g.got}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 補掃</button>`}${imp}`;
       const skip = g.state === 'wait' && !pos ? ` <a href="#" style="font-size:13px;color:#9ca3af;margin-left:6px" onclick="if(confirm('${grpLabel(g)}不掃了？')){grpFinish(grpById('${g.id}'),grpById('${g.id}').got||0,true)};return false">略過</a>` : '';
       const delA = g.state === 'scan' ? '' : `<a href="#" class="g-del" onclick="grpDelete('${g.id}');return false">刪除</a>`;
       return `<div class="g-row"><div class="g-h"><b>${grpLabel(g)}</b>${g.day !== d ? `<small>${g.day.slice(5)}</small>` : ''}<span class="g-amt">${g.total ? money(g.total) : ''}</span>${delA}</div>

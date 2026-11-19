@@ -95,6 +95,13 @@
   .g-row { padding:10px 0; border-top:1px solid rgba(127,127,127,.2); }
   .g-h { display:flex; gap:8px; align-items:baseline; } .g-h small { color:var(--muted); } .g-amt { margin-left:auto; font-variant-numeric:tabular-nums; }
   .g-items { font-size:14px; margin:2px 0; }
+  #batch { position:fixed; inset:0; z-index:30; display:none; background:var(--bg); overflow:auto; padding:calc(env(safe-area-inset-top) + 10px) 14px calc(env(safe-area-inset-bottom) + 90px); }
+  .b-top { font-size:15px; margin-bottom:10px; } .b-top b { font-size:18px; display:block; margin-bottom:4px; }
+  .b-row { display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid rgba(127,127,127,.2); font-size:15px; }
+  .b-row img { width:72px; height:54px; object-fit:cover; border-radius:6px; flex:0 0 auto; background:#333; }
+  .b-row.ok .b-msg { color:var(--ok); } .b-row.fail .b-msg, .b-row.dup .b-msg { color:var(--bad); } .b-row.run .b-msg { color:#d97706; }
+  .b-bot { position:fixed; left:0; right:0; bottom:0; display:flex; gap:8px; padding:10px 14px calc(env(safe-area-inset-bottom) + 10px); background:var(--bg); border-top:1px solid rgba(127,127,127,.25); }
+  .b-bot button { flex:1; margin:0; }
   .g-del { margin-left:10px; font-size:13px; color:#9ca3af !important; }
   .g-btn { display:inline-block; width:auto; margin:4px 0 0 6px; padding:6px 12px; font-size:14px; border-radius:8px; } .g-st { font-size:14px; } .g-wait { color:#d97706; font-weight:600; }
   #tabs button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
@@ -185,7 +192,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-m</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-n</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -199,6 +206,7 @@
   <button id="scanBtn" onclick="openCamera()">📷 掃描身分證正面</button>
   <button class="sec" onclick="openContinuous()">🔁 連續掃描（自動辨識、自動存檔）</button>
   <button class="sec" onclick="document.getElementById('pick').click()">從相簿選擇</button>
+  <button class="sec" onclick="batchStart(null)">🖼 相簿一次匯入多張</button>
   <input id="pick" type="file" accept="image/*">
   <canvas id="cardView"></canvas>
   <div id="status">準備中…</div>
@@ -254,6 +262,8 @@
 </div>
 
 </div><!-- /idView -->
+
+<div id="batch"></div>
 
 <div id="manifest">
   <div class="mf-bar">
@@ -346,6 +356,7 @@
 <script src="groups.js"></script>
 <script src="cont.js"></script>
 <script src="duo.js"></script>
+<script src="batch.js"></script>
 <script src="samples.js"></script>
 <script src="crops.js"></script>
 <script>

@@ -10,6 +10,7 @@ function birthOk(type, birth) {
   else return false;
   if (m < 1 || m > 12 || d < 1 || d > 31) return false;
   const dt = new Date(y, m - 1, d);
+  if (type === 'dl' && dt > new Date(Y - 17, now.getMonth(), now.getDate())) return false;   // 駕照至少 17 歲（讀成發照日期時擋下來）
   return y >= Y - 100 && dt <= now;
 }
 

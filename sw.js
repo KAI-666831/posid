@@ -1,6 +1,6 @@
 // 程式本體：先抓網路最新版，沒網路才用快取
 // 模型與引擎由 app 自己存在 posid-models-v1（只清自己 posid- 開頭的快取，不動同網域其他 app），這裡不碰、更新時也不刪
-const CACHE = 'posid-v13', KEEP = [CACHE, 'posid-models-v1', 'posid-flags'];
+const CACHE = 'posid-v14', KEEP = [CACHE, 'posid-models-v1', 'posid-flags'];
 // 實驗：多執行緒加速。開啟時替每個回應加上隔離標頭（COOP/COEP），瀏覽器才允許辨識引擎用多個核心
 let isoP = null;
 const getIso = () => isoP || (isoP = caches.open('posid-flags').then(c => c.match('mt')).then(r => !!r).catch(() => false));
@@ -15,7 +15,7 @@ function withIso(res) {
 }
 const iso = p => p.then(res => getIso().then(on => on ? withIso(res) : res));
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './checks.js', './docs.js', './pair.js', './qrcode.js', './crew.js', './cont.js', './duo.js', './groups.js', './samples.js', './crops.js', './pos/index.html', './manifest.webmanifest', './icon-180.png', './ort/ort.wasm.min.js', './ort/ort-wasm-simd-threaded.mjs'])));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './checks.js', './docs.js', './pair.js', './qrcode.js', './crew.js', './cont.js', './duo.js', './groups.js', './batch.js', './samples.js', './crops.js', './pos/index.html', './manifest.webmanifest', './icon-180.png', './ort/ort.wasm.min.js', './ort/ort-wasm-simd-threaded.mjs'])));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => e.waitUntil(

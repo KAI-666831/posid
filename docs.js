@@ -177,7 +177,7 @@ async function parseSeaman(lines, img) {
   for (const L of lines) { const m = L.t.toUpperCase().match(/([A-Z]{3}\d{6})/); if (m) { r.docno = m[1]; break; } }
   const bl = lines.find(L => /出生日期|BIRTH/i.test(L.t)), lim = bl ? bl.cy : 0.4;
   const votes = {};
-  const vote = s => { s = (s || '').replace(/[^\u4e00-\u9fff]/g, ''); if (s.length >= 2 && s.length <= 4 && !LABELS.test(s) && !/日期|姓名|出生|住址|身分|號碼|有效|發照/.test(s)) votes[s] = (votes[s] || 0) + 1; };
+  const vote = s => { s = (s || '').replace(/[^\u4e00-\u9fff]/g, ''); if (s.length >= 2 && s.length <= 4 && !LABELS.test(s) && !/日期|姓名|出生|住址|身分|號碼|有效|發照|樣本|測試|真實/.test(s)) votes[s] = (votes[s] || 0) + 1; };
   // 1) 偵測到的中文框
   lines.filter(L => L.cy < lim && CJK.test(L.t)).forEach(L => vote(L.t));
   // 2) 中文姓名印在英文姓名正上方，字很淡時偵測會漏，直接讀那一條
