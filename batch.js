@@ -182,8 +182,12 @@ async function refineIdName(lines, img) {
   let cands = cs.filter(c => /[一-鿿]/.test(c.ch)).map(c => ({ c: c.ch, cx: bx0 + c.x * (bx1 - bx0), p: c.p }));
   // 去掉「姓」「名」標籤字
   const li = cands.map(c => c.c).lastIndexOf('名');
-  if (li >= 0 && li <= 1) cands = cands.slice(li + 1); else while (cands.length && /[姓名]/.test(cands[0].c)) cands.shift();
-  cands = cands.filter(c => c.cx > lbl.x1 - 0.01);
+  if (li >= 0 && li <= 1) cands = cands.slice(li + 1);
+  else {
+    while (cands.length && /[姓名]/.test(cands[0].c)) cands.shift();
+    // 沒讀到「名」：標籤那一塊如果只有「姓名」兩個字，名字從它右邊開始；標籤跟姓黏在一起時不能用它的右緣（會把姓切掉）
+    if (/^姓名?$/.test(tt(lbl))) cands = cands.filter(c => c.cx > lbl.x1 - 0.01);
+  }
   if (!cands.length) return null;
   const c1 = cands[0].cx;
   let best = null;
