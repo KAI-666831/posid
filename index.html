@@ -186,13 +186,18 @@
   <div id="grpBody" style="margin-top:8px"></div>
 </div>
 
+<div class="card" id="dbgCard">
+  <b>除錯紀錄</b>
+  <div id="dbgBody" style="margin-top:6px"></div>
+</div>
+
 <div class="card" id="mtCard">
   <b>實驗功能</b>
   <div id="mtBody" style="margin-top:6px"></div>
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/20-f</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/20-g</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -362,6 +367,7 @@
 <script src="batch.js"></script>
 <script src="samples.js"></script>
 <script src="crops.js"></script>
+<script src="debug.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const CARD = 85.6/54, BOOK = 125/88;
@@ -968,6 +974,7 @@ function storeRecord(r, crop) {
   const a = load(); a.push(rec); store(a);
   if (crop) putCrop(rid, crop);
   render();
+  return rid;
 }
 
 let localRec = null;
@@ -1080,7 +1087,7 @@ let lastOcrMs = 0;
 function showTab(t) {
   document.body.classList.toggle('tab-pos', t === 'pos');
   document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
-  if (t === 'id') { render(); grpRender(); mtRender(); }
+  if (t === 'id') { render(); grpRender(); mtRender(); dbgRender(); }
 }
 document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 // 收銀結帳＝一組客人。馬上掃：直接進連續掃描、掃滿回收銀；等一下掃：先排隊

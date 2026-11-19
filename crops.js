@@ -58,10 +58,12 @@ async function openReview(i) {
 function closeReview() { $('review').style.display = 'none'; if ($('rvImg').src) URL.revokeObjectURL($('rvImg').src); $('rvImg').src = ''; }
 function saveReview(next) {
   const a = load(), r = a[reviewIdx]; if (!r) return closeReview();
+  const before = dbgPick(r);
   document.querySelectorAll('#rvFields input').forEach(inp => { r[inp.dataset.k] = inp.value.trim(); });
   if (r.idno) r.idno = r.idno.toUpperCase(); if (r.ppno) r.ppno = r.ppno.toUpperCase();
   r.unsure = []; r.checked = true;
   store(a); render(); closeReview();
+  dbgFix(r, before);
   if (next) { const j = load().findIndex(x => (x.unsure || []).length); if (j >= 0) openReview(j); else toast('全部核對完成'); }
 }
 function reviewNextUnsure() { const j = load().findIndex(x => (x.unsure || []).length); if (j >= 0) openReview(j); else toast('沒有需要核對的資料'); }

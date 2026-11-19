@@ -79,7 +79,9 @@ function docBox(boxes, W, H) {
 async function batchOne(it, b) {
   const photo = await loadPhoto(it.file);
   const box = docBox(await detectLines(photo), photo.width, photo.height);
-  if (!box) { it.st = 'fail'; it.msg = '找不到證件上的字（太遠、太暗或反光）'; return; }
+  const ocrText = ls => (ls || []).map(L => `${L.t}　@${L.x0.toFixed(2)},${L.y0.toFixed(2)}-${L.x1.toFixed(2)},${L.y1.toFixed(2)}`).join('\n');
+  const logFail = async (msg, r, ls) => dbgSave({ kind: 'fail', img: await smallPhoto(photo), msg, got: dbgPick(r), ocr: ocrText(ls) });
+  if (!box) { it.st = 'fail'; it.msg = '找不到證件上的字（太遠、太暗或反光）'; await logFail(it.msg, {}, []); return; }
   const sw = (box.x1 - box.x0) * photo.width, sh = (box.y1 - box.y0) * photo.height;
   const card = document.createElement('canvas'); card.width = 1600; card.height = Math.round(1600 * sh / sw);
   card.getContext('2d').drawImage(photo, box.x0 * photo.width, box.y0 * photo.height, sw, sh, 0, 0, card.width, card.height);
@@ -133,16 +135,18 @@ async function batchOne(it, b) {
   if (!recordOk(r)) {
     it.st = 'fail';
     it.msg = `沒讀完整（${[!primaryName(r) && '姓名', !birthOk(r.type, r.birth) && '生日', !(validId(r.idno || '') || (EN_FIRST(r.type) && r.ppno)) && '號碼'].filter(Boolean).join('、')}）`;
+    await logFail(it.msg, r, lines);
     return;
   }
   const c = findConflict(r);
   const og = c && c.kind === 'dup' ? (() => { const o = load().find(x => primaryNo(r) ? primaryNo(x) === primaryNo(r) : primaryName(x) === primaryName(r)); return o && o.grp && grpById(o.grp); })() : null;
   if (c && c.kind === 'dup') { it.st = 'dup'; it.msg = `⚠ 重複：${primaryName(r)} 已經存過${og ? '（' + grpLabel(og) + '）' : ''}，這張不算`; return; }
-  if (c) { it.st = 'fail'; it.msg = `⚠ ${c.msg}，沒存，請看實體證件`; return; }
+  if (c) { it.st = 'fail'; it.msg = `⚠ ${c.msg}，沒存，請看實體證件`; await logFail(it.msg, r, lines); return; }
   const g = b.gid ? grpById(b.gid) : null;
   const rec = { ...r, confirmed: false, unsure: lastUnsure.slice() };
   if (g) rec.grp = g.id;
-  storeRecord(rec, lastCrop);
+  const rid = storeRecord(rec, lastCrop);
+  dbgSave({ kind: 'pending', rid, img: await smallPhoto(photo), got: dbgPick(rec), ocr: ocrText(lines) });   // 之後在核對畫面改了才會變成「修正」紀錄
   clearFields(); $('cardView').style.display = 'none';
   it.st = 'ok'; it.msg = `${(rec.unsure || []).length ? '⚠ ' : '✓ '}${primaryName(r)}　${r.birth || ''}　${primaryNo(r)}`;
   if (g) {
