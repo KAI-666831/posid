@@ -126,6 +126,7 @@
   #highUI { position:absolute; right:16px; z-index:3; display:none; gap:6px; align-items:center;
             background:rgba(0,0,0,.55); color:#fff; padding:4px; border-radius:10px; font-size:14px; }
   #highUI button { background:rgba(255,255,255,.18); color:#fff; border:0; border-radius:8px; padding:6px 10px; font-size:14px; width:auto; margin:0; }
+  #frameIn { position:absolute; display:none; border:2px dashed rgba(255,255,255,.85); border-radius:8px; pointer-events:none; }
   #highUI b { min-width:44px; text-align:center; } #highUI span { padding:0 6px; opacity:.8; }
   #overlay video, #overlay img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   #overlay img { object-fit:contain; touch-action:none; }
@@ -176,7 +177,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-f</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-g</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -307,6 +308,7 @@
   <div id="camRes" style="position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:10px;color:#fff;font-size:12px;text-align:right;background:rgba(0,0,0,.45);padding:4px 8px;border-radius:8px"></div>
   <div id="hint"></div>
   <div id="highUI"></div>
+  <div id="frameIn"></div>
   <div id="zoomRow"><input id="zoom" type="range" min="0.3" max="4" step="0.01" value="1"></div>
   <div id="contRecent"></div>
   <div id="contTypes">
@@ -452,9 +454,16 @@ function highCfg() { try { return Object.assign({ on:false, z:1.4 }, JSON.parse(
 function highSet(c) { try { localStorage.setItem(HIGH_KEY, JSON.stringify(c)); } catch {} applyZoom(); }
 const curKind = () => (typeof cont !== 'undefined' && cont && cont.base) ? cont.base : docType;
 let cssZ = 1;   // 目前畫面放大倍率
+// 「自」＋架高：畫面不放大，框裡的虛線小框＝卡片範圍；先用小框辨識，認出是大證件（或讀不到）再用整個大框
+const highAuto = () => mode === 'camera' && !!stream && highCfg().on && curKind() === 'auto';
 function applyZoom() {
   const h = highCfg(), v = $('video');
-  cssZ = mode === 'camera' && stream && h.on && ZOOM_TYPES.includes(curKind()) ? h.z : 1;
+  cssZ = mode === 'camera' && stream && h.on && ZOOM_TYPES.includes(curKind()) && curKind() !== 'auto' ? h.z : 1;
+  const inner = $('frameIn');
+  if (inner) {
+    if (highAuto()) { const r = innerRect(); Object.assign(inner.style, { display:'block', left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px' }); }
+    else inner.style.display = 'none';
+  }
   const r = frameRect();
   v.style.transformOrigin = `${r.x + r.w / 2}px ${r.y + r.h / 2}px`;
   v.style.transform = cssZ > 1 ? `scale(${cssZ})` : '';
@@ -466,6 +475,10 @@ function applyZoom() {
         ? `<button onclick="highSet({...highCfg(),z:Math.max(1,Math.round((highCfg().z-0.05)*100)/100)})">－</button><b>${h.z.toFixed(2)}×</b><button onclick="highSet({...highCfg(),z:Math.min(3,Math.round((highCfg().z+0.05)*100)/100)})">＋</button>`
         : '<span>這類不放大</span>');
   if (typeof showCamRes === 'function') showCamRes();
+}
+function innerRect() {
+  const r = frameRect(), z = highCfg().z, cx = r.x + r.w / 2, cy = r.y + r.h / 2, w = r.w / z, h = r.h / z;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
 // 取景框換算回「沒放大」的畫面座標，用來從原始影像裁切
 function vidFrame() {
@@ -513,12 +526,12 @@ function closeOverlay() {
 }
 
 // 把畫面上的框框換算成原始影像座標後裁切（object-fit: cover）
-function cropFromVideo() {
+function cropFromVideo(inner) {
   const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
   const W = innerWidth, H = innerHeight;
   const s = Math.max(W / vw, H / vh);
   const ox = (W - vw*s)/2, oy = (H - vh*s)/2;
-  const r = vidFrame();
+  const r = inner ? innerRect() : vidFrame();
   return drawCrop(v, (r.x-ox)/s, (r.y-oy)/s, r.w/s, r.h/s);
 }
 function drawCrop(src, sx, sy, sw, sh) {

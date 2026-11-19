@@ -142,8 +142,24 @@ async function contTick() {
 
   cont.busy = true; contUI('辨識中…', '#3b82f6');
   try {
-    const card = cropFromVideo();
-    if (cont.base === 'auto') {
+    let card = cropFromVideo();
+    if (cont.base === 'auto' && highAuto()) {
+      // 架高：先讀中間卡片範圍（身分證、健保卡、居留證）；認出是護照／船員證／駕照，或讀不到，就改讀整個大框
+      await loadDet();
+      const small = cropFromVideo(true);
+      let lines = await readAllLines(small, (i, n) => contUI(`辨識中… ${i}/${n}`, '#3b82f6'));
+      if (!cont) return;
+      let g = guessType(lines);
+      if (g && ['id', 'arc', 'nhi'].includes(g)) card = small;
+      else {
+        contUI('像是大證件，改讀整個框…', '#3b82f6');
+        lines = await readAllLines(card, (i, n) => contUI(`辨識中（大框）… ${i}/${n}`, '#3b82f6'));
+        if (!cont) return;
+        g = guessType(lines) || 'id';
+      }
+      setType(g);
+      await runOcr(card, g === 'id' ? undefined : lines);
+    } else if (cont.base === 'auto') {
       // 通用自動辨識：先讀出所有文字判斷是哪種證件；身分證用身分證專用的讀法，其他用剛讀到的文字直接解析
       await loadDet();
       const lines = await readAllLines(card, (i, n) => contUI(`辨識中… ${i}/${n}`, '#3b82f6'));
