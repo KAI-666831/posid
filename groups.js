@@ -22,8 +22,15 @@ function grpAdd(d) {
 const grpWaiting = mode => groups.filter(g => g.state === 'wait' && (mode === 'all' || !g.later)).sort((a, b) => a.ts - b.ts);
 
 // 開始掃：g 指定一組（不接下一組）；不給 g 就照順序一組接一組
+// 標成「掃描中」但其實沒在掃的（例如 app 被切走、相機沒開成）：放回待掃
+function grpFix() {
+  let ch = false;
+  groups.forEach(g => { if (g.state === 'scan' && !(cont && cont.grp === g) && !contOpening) { g.state = 'wait'; ch = true; } });
+  if (ch) lsSet(GRP_KEY, groups);
+}
 function grpStart(mode, g) {
-  if (cont) return;
+  if (cont || contOpening) return;
+  grpFix();
   g = g || grpWaiting(mode)[0]; if (!g) { toast('沒有待掃的組'); return; }
   g.state = 'scan'; grpSave();
   openContinuous(g, g && mode ? mode : null);
@@ -54,20 +61,22 @@ function grpNames(g) { return load().filter(r => r.grp === g.id).map(r => primar
 // ---------- 畫面：今日各組 ----------
 function grpRender() {
   const el = $('grpBody'); if (!el) return;
+  grpFix();
   const pos = typeof duoRole === 'function' && duoRole() === 'pos';
   const d = dayStr(), today = groups.filter(g => g.day === d || g.state === 'wait').sort((a, b) => b.ts - a.ts);
   const wait = grpWaiting('all'), ppl = wait.reduce((s, g) => s + g.want - (g.got || 0), 0);
   const money = n => '$' + Number(n || 0).toLocaleString();
-  el.innerHTML = (wait.length && !pos ? `<button onclick="grpStart('all')">📷 開始掃描待掃的 ${wait.length} 組（共 ${ppl} 位）</button>` : '') +
+  el.innerHTML = (wait.length && !pos ? `<button onclick="grpStart('all')">📷 依序掃全部待掃 ${wait.length} 組（共 ${ppl} 位）</button>
+      <div style="font-size:13px;color:var(--muted);margin:4px 0 6px">只想掃某一組：按那一組的「📷 掃這組」</div>` : '') +
     (today.length ? today.map(g => {
       const names = pos ? [] : grpNames(g);
       let st;
-      if (g.state === 'wait') st = `<span class="g-wait">待掃 ${g.got || 0}/${g.want}</span>`;
+      if (g.state === 'wait') st = `<span class="g-wait">待掃 ${g.got || 0}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 掃這組</button>`}`;
       else if (g.state === 'scan') st = `<span class="g-wait">掃描中</span>`;
       else if (g.state === 'sent') st = `<span class="g-wait">已送掃描機 · 0/${g.want}</span>`;
       else if (g.got >= g.want) st = `<span class="ok">✓ ${g.got}/${g.want}</span>`;
-      else st = `<span class="bad">只掃 ${g.got}/${g.want}</span>${pos ? '' : ` <a href="#" onclick="grpStart(null,grpById('${g.id}'));return false">補掃</a>`}`;
-      const skip = g.state === 'wait' && !pos ? ` <a href="#" style="font-size:13px" onclick="if(confirm('${grpLabel(g)}不掃了？')){grpFinish(grpById('${g.id}'),grpById('${g.id}').got||0,true)};return false">略過</a>` : '';
+      else st = `<span class="bad">只掃 ${g.got}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 補掃</button>`}`;
+      const skip = g.state === 'wait' && !pos ? ` <a href="#" style="font-size:13px;color:#9ca3af;margin-left:6px" onclick="if(confirm('${grpLabel(g)}不掃了？')){grpFinish(grpById('${g.id}'),grpById('${g.id}').got||0,true)};return false">略過</a>` : '';
       return `<div class="g-row"><div class="g-h"><b>${grpLabel(g)}</b>${g.day !== d ? `<small>${g.day.slice(5)}</small>` : ''}<span class="g-amt">${g.total ? money(g.total) : ''}</span></div>
         <div class="g-items">${esc(g.desc)}</div>
         <div class="g-st">${st}${skip}${names.length ? '　' + names.map(esc).join('、') : ''}</div></div>`;

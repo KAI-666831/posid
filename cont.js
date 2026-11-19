@@ -61,10 +61,12 @@ document.addEventListener('touchstart', unlockAudio, { passive:true });
 document.addEventListener('click', unlockAudio);
 
 // grp：收銀的一組客人（groups.js）；chain：掃滿後接下一組（'auto'/'all'）；都沒帶就是一般連續掃描
+let contOpening = false;   // 相機開啟中（避免兩組同時開）
 async function openContinuous(grp, chain) {
   if (!grp || !grp.want) grp = null;
   unlockAudio();
-  await openCamera();
+  contOpening = true;
+  try { await openCamera(); } finally { contOpening = false; }
   if (!stream) { if (grp) { grpRequeue(grp); if (typeof groupDone === 'function') groupDone(0, grp.want, grp); } return; }
   let base = 'auto'; try { base = localStorage.getItem('idscan_cont_base') || 'auto'; } catch {}
   cont = { base, state: 'seek', prev: null, still: 0, sig: null, count: 0, busy: false, audio: contAudio, fails: 0, grp, got: grp ? (grp.got || 0) : 0, chain: grp ? chain || null : null };
