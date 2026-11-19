@@ -176,8 +176,10 @@ async function refineIdName(lines, img) {
   const h = lbl.y1 - lbl.y0;
   const row = lines.filter(L => Math.abs(L.cy - lbl.cy) < h * 1.3 && L.x1 > lbl.x0 && L.cx < 0.74);
   // 整條名字列一次讀，模型會給每個字的精確橫向位置
-  const by0 = Math.min(...row.map(L => L.y0)), by1 = Math.max(...row.map(L => L.y1));
-  const bx0 = Math.max(lbl.x0, 0), bx1 = 0.72;
+  // 只取名字那一列的高度（不要碰到下一列生日的「年」「月」）
+  const core = row.filter(L => Math.abs(L.cy - lbl.cy) < h * 0.6);
+  const by0 = Math.min(...core.map(L => L.y0)), by1 = Math.max(...core.map(L => L.y1));
+  const bx0 = Math.max(lbl.x0, 0), bx1 = 0.8;   // 第三個字常在卡片寬 60～75% 的地方
   const cs = await recRegion(img, bx0, by0, bx1, by1, true);
   let cands = cs.filter(c => /[一-鿿]/.test(c.ch)).map(c => ({ c: c.ch, cx: bx0 + c.x * (bx1 - bx0), p: c.p }));
   // 去掉「姓」「名」標籤字
@@ -201,14 +203,14 @@ async function refineIdName(lines, img) {
   // 用對上格子的字再微調一次間距
   const fit = cands.map(c => [c, Math.round((c.cx - c1) / best.p)]).filter(([c, k]) => k >= 1 && k <= 3 && Math.abs((c.cx - c1) / best.p - k) < 0.3);
   const p = Math.min(0.2, Math.max(0.145, fit.length >= 2 ? fit.reduce((s, [c, k]) => s + (c.cx - c1) / k, 0) / fit.length : best.p));
-  const y0 = Math.min(...row.map(L => L.y0)), y1 = Math.max(...row.map(L => L.y1));
+  const y0 = by0, y1 = by1;
   const cw = (y1 - y0) / CARD;   // 字寬（以卡片寬為單位，字差不多是正方形）
   let name = '';
   for (let k = 0; k <= 3; k++) {
-    const sx = c1 + k * p; if (sx > 0.70) break;
+    const sx = c1 + k * p; if (sx > 0.78) break;
     const hit = cands.filter(c => Math.abs(c.cx - sx) < p * 0.3).sort((a, b) => Math.abs(a.cx - sx) - Math.abs(b.cx - sx))[0];
     let ch = hit ? hit.c : '';
-    if (!ch && img && !cands.some(c => Math.abs(c.cx - sx) < p * 0.6)) {   // 這一格附近完全沒讀到字：單獨裁這一格再讀
+    if (!ch && img && k <= 2 && !cands.some(c => Math.abs(c.cx - sx) < p * 0.6)) {   // 第 4 格不補讀（會讀到照片）   // 這一格附近完全沒讀到字：單獨裁這一格再讀
       const t = await recRegion(img, sx - cw * 0.7, y0, sx + cw * 0.7, y1);
       const m = (t || '').match(/[一-鿿]/);
       if (m && (recRegion.lastMinP || 0) > 0.5) ch = m[0];
