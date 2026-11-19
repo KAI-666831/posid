@@ -70,6 +70,21 @@ function grpVoid(id, fromPeer) {
   }
 }
 
+// 手動刪一組（例如更新前留下的舊組）。只刪「組」，已掃的人留在名單；收銀的那筆結帳不受影響
+function grpDelete(id) {
+  const g = grpById(id); if (!g) return;
+  if (!confirm(`刪除${grpLabel(g)}？\n（收銀那筆結帳不會刪；要連結帳一起刪，請到收銀「今日統計」刪那一筆）`)) return;
+  grpVoid(id);
+}
+function grpClearAll() {
+  if (cont) { toast('正在掃描，先結束再清除', true); return; }
+  if (!confirm('清除「今日各組」全部的組？\n（名單裡已掃的人和收銀的結帳紀錄都不會刪）')) return;
+  const ids = groups.map(g => g.id);
+  groups = []; grpSave(); grpRender();
+  if (typeof duoRole === 'function' && duoRole() === 'pos') { duoOut = []; duoSave(); ids.forEach(id => duoSend('void', { id }).catch(() => {})); duoRender(); }
+  toast('已清除全部組');
+}
+
 // ---------- 畫面：今日各組 ----------
 function grpRender() {
   const el = $('grpBody'); if (!el) return;
@@ -89,10 +104,12 @@ function grpRender() {
       else if (g.got >= g.want) st = `<span class="ok">✓ ${g.got}/${g.want}</span>`;
       else st = `<span class="bad">只掃 ${g.got}/${g.want}</span>${pos ? '' : ` <button class="g-btn" onclick="grpStart(null,grpById('${g.id}'))">📷 補掃</button>`}`;
       const skip = g.state === 'wait' && !pos ? ` <a href="#" style="font-size:13px;color:#9ca3af;margin-left:6px" onclick="if(confirm('${grpLabel(g)}不掃了？')){grpFinish(grpById('${g.id}'),grpById('${g.id}').got||0,true)};return false">略過</a>` : '';
-      return `<div class="g-row"><div class="g-h"><b>${grpLabel(g)}</b>${g.day !== d ? `<small>${g.day.slice(5)}</small>` : ''}<span class="g-amt">${g.total ? money(g.total) : ''}</span></div>
+      const delA = g.state === 'scan' ? '' : `<a href="#" class="g-del" onclick="grpDelete('${g.id}');return false">刪除</a>`;
+      return `<div class="g-row"><div class="g-h"><b>${grpLabel(g)}</b>${g.day !== d ? `<small>${g.day.slice(5)}</small>` : ''}<span class="g-amt">${g.total ? money(g.total) : ''}</span>${delA}</div>
         <div class="g-items">${esc(g.desc)}</div>
         <div class="g-st">${st}${skip}${names.length ? '　' + names.map(esc).join('、') : ''}</div></div>`;
-    }).join('') : '<div style="color:var(--muted);font-size:14px">今天還沒有結帳的組</div>');
+    }).join('') + `<a href="#" class="g-del" style="display:inline-block;margin-top:10px" onclick="grpClearAll();return false">清除全部組</a>`
+    : '<div style="color:var(--muted);font-size:14px">今天還沒有結帳的組</div>');
   // 上方分頁列的「待掃」按鈕
   const q = $('qBtn');
   if (q) { q.style.display = wait.length && !pos ? '' : 'none'; q.textContent = `📷 待掃 ${wait.length}`; }
