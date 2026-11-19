@@ -60,14 +60,14 @@ function unlockAudio() {
 document.addEventListener('touchstart', unlockAudio, { passive:true });
 document.addEventListener('click', unlockAudio);
 
-// grp：從收銀結帳過來 { want: 要掃幾位, order, desc }；沒帶就是一般連續掃描
-async function openContinuous(grp) {
+// grp：收銀的一組客人（groups.js）；chain：掃滿後接下一組（'auto'/'all'）；都沒帶就是一般連續掃描
+async function openContinuous(grp, chain) {
   if (!grp || !grp.want) grp = null;
   unlockAudio();
   await openCamera();
-  if (!stream) { if (grp && typeof groupDone === 'function' && !(typeof duoRole === 'function' && duoRole() === 'scan')) groupDone(0, grp.want, grp); return; }
+  if (!stream) { if (grp) { grpRequeue(grp); if (typeof groupDone === 'function') groupDone(0, grp.want, grp); } return; }
   let base = 'auto'; try { base = localStorage.getItem('idscan_cont_base') || 'auto'; } catch {}
-  cont = { base, state: 'seek', prev: null, still: 0, sig: null, count: 0, busy: false, audio: contAudio, fails: 0, grp, got: 0 };
+  cont = { base, state: 'seek', prev: null, still: 0, sig: null, count: 0, busy: false, audio: contAudio, fails: 0, grp, got: grp ? (grp.got || 0) : 0, chain: grp ? chain || null : null };
   $('shutter').style.display = 'none';
   $('contBar').style.display = 'block'; $('contCount').textContent = '0';
   contTopUI();
@@ -80,27 +80,27 @@ async function openContinuous(grp) {
 function contTopUI() {
   if (!cont) return;
   const top = document.querySelector('#contBar .cb-top');
-  const more = typeof duoQ !== 'undefined' && duoRole() === 'scan' ? duoQ.length - 1 : 0;
-  if (cont.grp) top.innerHTML = `本組 <b>${cont.got}</b> / ${cont.grp.want} 位${cont.grp.desc ? '　<span style="opacity:.8">' + esc(cont.grp.desc) + '</span>' : ''}${more > 0 ? `<br><span style="color:#fde047">後面還有 ${more} 組在排隊</span>` : ''}`;
+  const more = cont.chain ? grpWaiting(cont.chain).length : 0;
+  if (cont.grp) top.innerHTML = `${grpLabel(cont.grp)}　<b>${cont.got}</b> / ${cont.grp.want} 位${cont.grp.desc ? '<br><span style="opacity:.85;font-size:14px">' + esc(cont.grp.desc) + '</span>' : ''}${more > 0 ? `<br><span style="color:#fde047">後面還有 ${more} 組</span>` : ''}`;
   else top.innerHTML = `已存 <b id="contCount">${cont.count}</b> 筆`;
 }
 // 本組多一位（新存檔或之前就存過）；掃滿自動回收銀
 function groupGot() {
   if (!cont || !cont.grp) return;
-  cont.got++; contTopUI();
+  cont.got++; cont.grp.got = cont.got; grpSave(); contTopUI();
   if (cont.got >= cont.grp.want) {
-    if (typeof duoAdvance === 'function' && duoAdvance()) return;   // 掃描機：直接接下一組
+    if (grpAdvance()) return;   // 還有下一組：不關相機直接接
     cont.state = 'done';
-    contUI(`✓ ${cont.grp.want} 位都掃好了，回到收銀…`, '#16a34a');
+    contUI(`✓ ${grpLabel(cont.grp)} ${cont.grp.want} 位都掃好了`, '#16a34a');
     setTimeout(() => { if (cont && cont.state === 'done') stopContinuous(true); }, 1300);
   }
 }
 // 取消／完成按鈕
 function contFinish() {
   if (cont && cont.grp && cont.got < cont.grp.want && !confirm(`這組還有 ${cont.grp.want - cont.got} 位沒掃，確定結束這組？`)) return;
-  stopContinuous();
+  stopContinuous('user');
 }
-function stopContinuous() {
+function stopContinuous(reason) {
   if (!cont) return;
   clearInterval(cont.timer);
   const n = cont.count, grp = cont.grp, got = cont.got;
@@ -109,7 +109,11 @@ function stopContinuous() {
   $('contBar').style.display = 'none'; $('contRecent').style.display = 'none'; $('contTypes').style.display = 'none'; $('frame').style.borderColor = '#22c55e';
   closeOverlay();
   setType(TYPES[docType] ? docType : 'id');
-  if (grp) { if (typeof groupDone === 'function') groupDone(got, grp.want, grp); return; }
+  if (grp) {
+    if (got >= grp.want || reason === 'user') grpFinish(grp, got, got < grp.want); else grpRequeue(grp);
+    if (typeof groupDone === 'function') groupDone(got, grp.want, grp);
+    return;
+  }
   if (n) toast(`連續掃描完成，共存了 ${n} 筆`);
 }
 
@@ -181,13 +185,14 @@ async function contTick() {
       cont.cand = null; cont.tries = 0;
       const c = findConflict(r);
       if (c && c.kind === 'dup' && cont.grp) {        // 收銀模式：老客人之前存過，也算這組的一位
+        grpTagExisting(r);
         beep(true); contUI(`✓ ${primaryName(r)} 之前存過，算這組 1 位，請移開`, '#16a34a');
         cont.recent.unshift({ ...r, unsure:[] }); renderRecent(); groupGot();
       }
       else if (c && c.kind === 'dup') { beep(false); contUI(`${c.msg}，請換下一張`, '#eab308'); }
       else if (c) { beep(false); contUI(`⚠ ${c.msg}。沒有存檔，請看實體證件，用單張掃描確認`, '#dc2626'); }
       else {
-        storeRecord({ ...r, confirmed:false, unsure:[...un] }, lastCrop);
+        storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un] }), lastCrop);
         cont.count++; if ($('contCount')) $('contCount').textContent = cont.count;
         cont.recent.unshift({ ...r, unsure:[...un] }); renderRecent();
         beep(true); contUI(`✓ ${primaryName(r)}　${primaryNo(r)}　已存檔，請移開`, '#16a34a');

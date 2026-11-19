@@ -90,6 +90,10 @@
   #tabs { position:fixed; left:0; right:0; top:0; z-index:6; display:flex; gap:6px; padding:calc(env(safe-area-inset-top) + 8px) 12px 8px;
           background:var(--bg); border-bottom:1px solid rgba(0,0,0,.08); }
   #tabs button { flex:1; padding:10px 0; font-size:16px; border-radius:10px; background:transparent; color:var(--fg); border:1px solid rgba(127,127,127,.35); }
+  #tabs #qBtn { flex:0 0 auto; padding:10px 12px; background:#f59e0b; color:#111; border-color:#f59e0b; font-weight:700; }
+  .g-row { padding:10px 0; border-top:1px solid rgba(127,127,127,.2); }
+  .g-h { display:flex; gap:8px; align-items:baseline; } .g-h small { color:var(--muted); } .g-amt { margin-left:auto; font-variant-numeric:tabular-nums; }
+  .g-items { font-size:14px; margin:2px 0; } .g-st { font-size:14px; } .g-wait { color:#d97706; font-weight:600; }
   #tabs button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
   #posView { position:fixed; left:0; right:0; bottom:0; top:calc(env(safe-area-inset-top) + 56px); z-index:5; background:#f6f4ef; }
   #posView iframe { width:100%; height:100%; border:0; display:block; }
@@ -151,7 +155,7 @@
 </style>
 </head>
 <body class="tab-pos">
-<div id="tabs"><button data-tab="pos" class="on">🧾 收銀</button><button data-tab="id">🪪 證件／名單</button></div>
+<div id="tabs"><button data-tab="pos" class="on">🧾 收銀</button><button data-tab="id">🪪 證件／名單</button><button id="qBtn" style="display:none" onclick="grpStart('all')"></button></div>
 <div id="posView"><iframe src="pos/index.html" title="收銀"></iframe></div>
 <div id="idView">
 <div class="card" id="duoCard">
@@ -162,8 +166,13 @@
   <div id="duoBody"></div>
 </div>
 
+<div class="card" id="grpCard">
+  <b>今日各組</b>
+  <div id="grpBody" style="margin-top:8px"></div>
+</div>
+
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-c</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/19-d</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -319,6 +328,7 @@
 <script src="qrcode.js"></script>
 <script src="pair.js"></script>
 <script src="crew.js"></script>
+<script src="groups.js"></script>
 <script src="cont.js"></script>
 <script src="duo.js"></script>
 <script src="samples.js"></script>
@@ -830,7 +840,7 @@ function render() {
   $('unsureBar').style.display = nUn ? 'block' : 'none'; $('unsureN').textContent = nUn; if ($('paxCount')) $('paxCount').textContent = a.length;
   const bad = conflictSet(a);
   $('list').tBodies[0].innerHTML = a.map((r,i) =>
-    `<tr><td>${esc(TYPES[r.type||'id']?.label||'')}</td><td onclick="openReview(${i})" class="${(r.unsure || []).length ? 'unsure-cell' : ''}" style="text-decoration:underline dotted;cursor:pointer">${bad.has(i) ? '<span class="bad">⚠ </span>' : ''}${(r.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(r))}</td><td>${esc(r.birth)}</td><td>${esc(primaryNo(r))}</td><td>${r.confirmed ? '<span class="ck">✓</span>' : ''}</td><td><a href="#" onclick="del(${i});return false">刪</a></td></tr>`).join('');
+    `<tr><td>${esc(TYPES[r.type||'id']?.label||'')}</td><td onclick="openReview(${i})" class="${(r.unsure || []).length ? 'unsure-cell' : ''}" style="text-decoration:underline dotted;cursor:pointer">${bad.has(i) ? '<span class="bad">⚠ </span>' : ''}${(r.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(r))}${r.grp && grpById(r.grp) ? ` <small style="color:var(--muted)">${grpLabel(grpById(r.grp))}</small>` : ''}</td><td>${esc(r.birth)}</td><td>${esc(primaryNo(r))}</td><td>${r.confirmed ? '<span class="ck">✓</span>' : ''}</td><td><a href="#" onclick="del(${i});return false">刪</a></td></tr>`).join('');
 }
 // ---------- 給客人確認 ----------
 const EN_LABEL = { name:'Name', nameEn:'Name', birth:'Date of birth', idno:'ID No.', ppno:'Passport No.', nat:'Nationality', docno:'Book No.' };
@@ -950,27 +960,35 @@ else {
 // ---------- 收銀 ⇄ 證件 ----------
 function showTab(t) {
   document.body.classList.toggle('tab-pos', t === 'pos');
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
-  if (t === 'id') render();
+  document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  if (t === 'id') { render(); grpRender(); }
 }
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
-// 收銀結帳 → 直接進連續掃描，掃滿人數自動回收銀
+document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+// 收銀結帳＝一組客人。馬上掃：直接進連續掃描、掃滿回收銀；等一下掃：先排隊
 window.addEventListener('message', e => {
   if (e.origin !== location.origin || !e.data || e.data.type !== 'posid-scan') return;
-  if (typeof duoCheckout === 'function' && duoCheckout(e.data)) return;   // 雙機：交給掃描機
-  if (cont) return;
-  openContinuous({ want: e.data.n, order: e.data.order, desc: e.data.desc || '' });
+  const d = e.data;
+  const g = grpAdd({ id: d.order, want: d.n, desc: d.desc || '', total: d.total, later: d.later });
+  if (duoCheckout(g)) return;   // 雙機：交給掃描機
+  if (d.later || cont) { toast(`${grpLabel(g)} 已結帳，證件待掃 ${g.want} 位`); grpRender(); return; }
+  grpStart(null, g);
 });
 // 掃完一組（或按完成）：回到收銀頁
 function groupDone(n, want, grp) {
   render();
-  if (typeof duoRole === 'function' && duoRole() === 'scan') { duoFinish(grp, n); return; }   // 掃描機：留在這頁等下一組
+  grpRender();
+  if (duoRole() === 'scan') return;   // 掃描機：留在這頁等下一組
   showTab('pos');
-  const f = document.querySelector('#posView iframe');
-  try { f.contentWindow.postMessage({ type:'posid-done', n, want }, location.origin); } catch {}
+  if (grp && n >= want) toast(`✓ ${grpLabel(grp)} ${want} 位證件都掃好了`);
+  else if (grp && grp.state === 'wait') toast(`${grpLabel(grp)} 還沒掃，放在待掃`, true);
+  else if (grp) toast(`${grpLabel(grp)} 只掃了 ${n} / ${want} 位`, true);
 }
 
-if (!dispPair) { duoConnect(); duoRender(); duoWake(); if (duoRole() === 'scan') showTab('id'); }
+if (!dispPair) {
+  // 上次 app 被關掉時正在掃的組，放回待掃
+  groups.forEach(g => { if (g.state === 'scan') g.state = 'wait'; }); grpSave();
+  duoConnect(); duoRender(); duoWake(); grpRender(); if (duoRole() === 'scan') showTab('id');
+}
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache:'none' }).then(r => r.update()).catch(()=>{});
 </script>

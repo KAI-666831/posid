@@ -603,8 +603,9 @@
           <button data-q="exact">剛好</button><button data-q="100">100</button><button data-q="500">500</button><button data-q="1000">1000</button>
         </div>
         ${p ? `<div class="change ${ch < 0 ? 'short' : ''}"><span>${ch < 0 ? '還差' : '找零'}</span><b>${money(Math.abs(ch))}</b></div>` : ''}
-        ${EMBED && ppl ? `<div class="change"><span>結帳後掃證件</span><b>${ppl} 位</b></div>` : ''}
-        <button class="btn" id="checkout" ${!cart.length || (p && ch < 0) ? 'disabled' : ''}>結帳 ${cart.length ? money(total) : ''}${EMBED && ppl ? ' → 掃證件' : ''}</button>
+        ${EMBED && ppl ? `<div class="change"><span>這組要掃證件</span><b>${ppl} 位</b></div>` : ''}
+        <button class="btn" id="checkout" ${!cart.length || (p && ch < 0) ? 'disabled' : ''}>結帳 ${cart.length ? money(total) : ''}${EMBED && ppl ? ' → 馬上掃證件' : ''}</button>
+        ${EMBED && ppl ? `<button class="btn sec" id="checkoutLater" ${!cart.length || (p && ch < 0) ? 'disabled' : ''}>結帳・證件等一下一起掃</button>` : ''}
       </div>`;
     el.querySelectorAll('.qty button').forEach(b => b.onclick = () => {
       const c = cart[+b.dataset.i]; c.qty += +b.dataset.d;
@@ -619,10 +620,11 @@
       paid = q === 'exact' ? String(total) : String((Number(paid)||0) + Number(q));
       renderCart();
     });
-    $('#checkout').onclick = checkout;
+    $('#checkout').onclick = () => checkout(false);
+    const lt = $('#checkoutLater'); if (lt) lt.onclick = () => checkout(true);
   }
   let busy = false;
-  async function checkout(){
+  async function checkout(later){
     if (!cart.length || busy) return;
     busy = true;
     const now = new Date(), total = cartTotal(), p = Number(paid) || total;
@@ -632,9 +634,10 @@
       saveOrder(order);
       const ppl = cartPeople();
       toast(order.change > 0 ? `已結帳 · 找零 ${money(order.change)}` : `已結帳 ${money(total)}`);
-      const desc = cart.filter(c => c.key.startsWith('p:') && isPpl(products.find(p => 'p:' + p.id === c.key))).map(c => c.name + '×' + c.qty).join('　');
+      // 整組買了什麼（人頭和單品都列），之後掃證件時才知道是哪一組客人
+      const desc = cart.map(c => c.name + '×' + c.qty).join('　');
       cart = []; paid = ''; renderGrid(); renderCart();
-      if (EMBED && ppl > 0) parent.postMessage({ type:'posid-scan', n: ppl, order: order.id, desc, change: order.change }, location.origin);
+      if (EMBED && ppl > 0) parent.postMessage({ type:'posid-scan', n: ppl, order: order.id, desc, total, later: !!later, change: order.change }, location.origin);
     } catch(e) {
       toast('手機儲存失敗，請截圖記下這筆');
     } finally { busy = false; }
