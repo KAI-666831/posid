@@ -81,7 +81,7 @@ const NATS = ['越南','印尼','菲律賓','泰國','緬甸','馬來西亞','�
 const MONTHS = { JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12 };
 
 // ---------- 居留證 ----------
-function parseArc(lines) {
+async function parseArc(lines, card) {
   const r = {};
   const ids = findIds(lines); if (ids.length) { r.idno = ids[0].v; }
   const dates = [];
@@ -89,7 +89,7 @@ function parseArc(lines) {
     dates.push(`${m[1]}-${pad2(m[2])}-${pad2(m[3])}`);
   dates.sort(); if (dates.length) r.birth = dates[0];          // 生日一定最早（早於核發日、到期日）
   // 護照號碼：先找「護照號碼 Passport No.」標籤正下方那一行（有些國家全是數字，例如俄羅斯 759411029）
-  const pl = lines.find(L => /PASSPORT|護照|照號|號碼/i.test(L.t) && !/\d{5}/.test(L.t));
+  const pl = lines.find(L => /PASSPORT|PASP|PASSP|護照|照號|照碼|號碼|号码/i.test(L.t) && !/\d{5}/.test(L.t));
   const norm = L => L.t.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const okNo = t => /^[A-Z0-9]{6,10}$/.test(t) && /\d{5}/.test(t) && t !== r.idno && !/^(19|20)\d{6}$/.test(t);
   if (pl) {
@@ -97,9 +97,10 @@ function parseArc(lines) {
       .sort((a, b) => a.cy - b.cy);
     if (below.length) r.ppno = norm(below[0]);
   }
-  if (!r.ppno) for (const L of lines) {
+  // 沒找到標籤：護照號碼在卡片右半邊（左上那個是統一證號，讀錯時也長得像護照號碼）
+  if (!r.ppno) for (const L of lines.slice().sort((a, b) => b.x0 - a.x0)) {
     const t = norm(L);
-    if (/^[A-Z]{1,2}\d{6,8}$/.test(t) && t !== r.idno) { r.ppno = t; break; }
+    if (/^[A-Z]{1,2}\d{6,8}$/.test(t) && t !== r.idno && L.x0 > 0.35) { r.ppno = t; break; }
   }
   // 國籍：已知國名，或「國籍 Nationality」下方的中文，或三碼國家代號（例如 RUS）
   r.nat = NATS.find(n => lines.some(L => L.t.includes(n))) || '';
@@ -115,12 +116,43 @@ function parseArc(lines) {
   const idL = ids[0]?.L, birthLbl = lines.find(L => /出生日期|Date.?of.?b/i.test(L.t));
   const top = idL ? idL.cy : 0, bottom = birthLbl ? birthLbl.cy : (idL ? idL.cy + 0.25 : 1);
   const en = lines.filter(L => L.cy > top && L.cy < bottom && L.x0 < 0.5 && isEnName(L.t.toUpperCase()));
-  // 只取跟第一段英文姓名同一列的（避免把右邊「Nationality」標籤碎片接進來）
   const anchor = en.slice().sort((a,b) => b.t.replace(/[^A-Za-z]/g,'').length - a.t.replace(/[^A-Za-z]/g,'').length)[0];
-  const row = anchor ? en.filter(L => L === anchor || (Math.abs(L.cy - anchor.cy) < (anchor.y1 - anchor.y0) * 0.7 && L.x0 < Math.max(0.45, anchor.x1 + 0.05))) : [];
-  r.nameEn = row.sort((a,b) => a.x0 - b.x0).map(L => L.t.toUpperCase()).join(' ').replace(/\s+/g,' ').trim();
-  const zh = lines.filter(L => L.cy > top - 0.03 && L.cy < bottom && CJK.test(L.t) && !LABELS.test(L.t) && !/姓名|日期|居留|服務站/.test(L.t));
-  r.name = zh.length ? zh[0].t : '';
+  // 同一列的英文一段一段往右接（名字很長時會超過卡片中線，例如 DEL ROSARIO BONIFACIO MAGTIBAY）；碰到「Male」或距離太遠就停
+  let row = [];
+  if (anchor) {
+    const h = anchor.y1 - anchor.y0;
+    const same = lines.filter(L => Math.abs(L.cy - anchor.cy) < h * 0.7 && isEnName(L.t.toUpperCase()) && !/^(FE)?MALE$/i.test(L.t.trim())).sort((a, b) => a.x0 - b.x0);
+    const i = same.indexOf(anchor); row = [anchor];
+    for (let j = i + 1; j < same.length && same[j].x0 - row[row.length - 1].x1 < 0.06; j++) row.push(same[j]);
+    for (let j = i - 1; j >= 0 && row[0].x0 - same[j].x1 < 0.06; j--) row.unshift(same[j]);
+  }
+  r.nameEn = row.map(L => L.t.toUpperCase()).join(' ').replace(/\s+/g,' ').trim();
+  // 第一個字母常被切掉（AGUNG 讀成 GUNG）：整列從卡片左邊重讀一次，多出來的只在前面、最多 3 個字母才採用
+  if (card && row.length) {
+    const y0 = Math.min(...row.map(L => L.y0)), y1 = Math.max(...row.map(L => L.y1)), x1 = Math.max(...row.map(L => L.x1));
+    for (const [dx, dy] of [[0.08, 0.015], [0.06, 0.01], [0.04, 0.005]]) {
+      const re = (await recRegion(card, Math.max(0, row[0].x0 - dx), y0 - dy, Math.min(1, x1 + 0.02), y1 + dy)).toUpperCase().replace(/[^A-Z ]/g, '').replace(/\s+/g, ' ').trim();
+      const a0 = r.nameEn.replace(/[^A-Z]/g, ''), a1 = re.replace(/[^A-Z]/g, '');
+      if (a1.length > a0.length && a1.length <= a0.length + 3 && a1.endsWith(a0) && isEnName(re)) { r.nameEn = re; break; }
+    }
+  }
+  // 中文名：英文名正上方那一小段中文（不是最上面的「中華民國」標題）
+  const zh = lines.filter(L => CJK.test(L.t.replace(/\s/g, '')) && !LABELS.test(L.t) && !/姓名|日期|居留|服務站|中華|民國|華民|居留|證/.test(L.t)
+    && (anchor ? (Math.abs(L.cy - anchor.cy) < 0.12 && L.x1 < 0.6) : (L.cy > top - 0.03 && L.cy < bottom)))
+    // 新式居留證中文名在英文名「上面」；有些舊式在下面：先找上面最近的
+    .sort((a, b) => anchor ? ((a.cy > anchor.cy) - (b.cy > anchor.cy)) || (Math.abs(a.cy - anchor.cy) - Math.abs(b.cy - anchor.cy)) : a.cy - b.cy);
+  r.name = zh.length ? zh[0].t.replace(/\s/g, '') : '';
+  // 中文名重讀幾次（稍微放大範圍），取模型最有把握的那次
+  if (card && zh.length) {
+    const L = zh[0]; let best = r.name, bp = -1;
+    for (const pd of [0, 0.01, 0.02]) {
+      const t = (await recRegion(card, Math.max(0, L.x0 - pd * 2), L.y0 - pd, Math.min(1, L.x1 + pd * 2), L.y1 + pd)).replace(/[^一-鿿]/g, '');
+      const p = recRegion.lastMinP ?? 0;
+      if (/^[一-鿿]{2,5}$/.test(t) && p > bp) { best = t; bp = p; }
+    }
+    r.name = toTrad(best);
+    if (bp < 0.5) r._zhLow = true;      // 中文名模型沒把握（例如「羅」讀成「海」）→ 標請核對
+  }
   return r;
 }
 
