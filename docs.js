@@ -215,8 +215,12 @@ async function parseArc(lines, card) {
   // 英文姓名：統一證號下方、出生日期上方，左半邊的大寫英文
   const idL = ids[0]?.L, birthLbl = lines.find(L => /出生日期|Date.?of.?b/i.test(L.t));
   const top = idL ? idL.cy : 0, bottom = birthLbl ? birthLbl.cy : (idL ? idL.cy + 0.25 : 1);
-  const en = lines.filter(L => L.cy > top && L.cy < bottom && L.x0 < 0.5 && isEnName(L.t.toUpperCase()));
-  const anchor = en.slice().sort((a,b) => b.t.replace(/[^A-Za-z]/g,'').length - a.t.replace(/[^A-Za-z]/g,'').length)[0];
+  // 名字是全大寫；「Date of birth」「Nationality」這些欄位標籤是大小寫混合，不算（短名字如 SARYONO 才不會被標籤搶走）
+  const caps = t => { const l = t.replace(/[^A-Za-z]/g, ''); return l && l.replace(/[^A-Z]/g, '').length / l.length >= 0.8; };
+  const en = lines.filter(L => L.cy > top && L.cy < bottom && L.x0 < 0.5 && caps(L.t) && isEnName(L.t.toUpperCase()));
+  const nlbl = lines.find(L => /姓名|Name/i.test(L.t) && L.x0 < 0.35);
+  const below = nlbl ? en.filter(L => L.cy > nlbl.cy && L.cy < nlbl.cy + 0.15).sort((a, b) => a.cy - b.cy)[0] : null;   // 「姓名 Name」正下方那一行
+  const anchor = below || en.slice().sort((a,b) => b.t.replace(/[^A-Za-z]/g,'').length - a.t.replace(/[^A-Za-z]/g,'').length)[0];
   // 同一列的英文一段一段往右接（名字很長時會超過卡片中線，例如 DEL ROSARIO BONIFACIO MAGTIBAY）；碰到「Male」或距離太遠就停
   let row = [];
   if (anchor) {

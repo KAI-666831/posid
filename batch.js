@@ -97,8 +97,10 @@ function rotCanvas(img, deg) {
   const g = c.getContext('2d'); g.translate(c.width / 2, c.height / 2); g.rotate(deg * Math.PI / 180); g.drawImage(img, -img.width / 2, -img.height / 2);
   return c;
 }
-async function batchOne(it, b, rot) {
-  let photo = await loadPhoto(it.file);
+// 一張照片 → 辨識結果（相簿匯入和相機連續掃描共用同一套讀法）
+// prog(訊息) 顯示進度；cancelled() 回傳 true 就停
+async function recognizePhoto(photo0, prog, cancelled, rot, hint) {
+  let photo = photo0;
   let boxes = await detectLines(photo);
   // 證件直放拍（字是直的）：直的框比橫的多 → 轉 90 度再讀
   if (rot === undefined) {
@@ -108,16 +110,15 @@ async function batchOne(it, b, rot) {
   }
   if (rot) { photo = rotCanvas(photo, rot); boxes = await detectLines(photo); }
   const box = docBox(boxes, photo.width, photo.height);
-  const logFail = async (msg, r, ls) => dbgSave({ kind: 'fail', img: await smallPhoto(photo), msg, got: dbgPick(r), ocr: ocrText(ls) });
-  if (!box) { it.st = 'fail'; it.msg = '找不到證件上的字（太遠、太暗或反光）'; await logFail(it.msg, {}, []); return; }
+  if (!box) return { fail: '找不到證件上的字（太遠、太暗或反光）', r: {}, lines: [], photo, box };
   const sw = (box.x1 - box.x0) * photo.width, sh = (box.y1 - box.y0) * photo.height;
   const card = document.createElement('canvas'); card.width = 1600; card.height = Math.round(1600 * sh / sw);
   card.getContext('2d').drawImage(photo, box.x0 * photo.width, box.y0 * photo.height, sw, sh, 0, 0, card.width, card.height);
-  const lines = await readAllLines(card, (i, n) => { it.msg = `辨識中… ${i}/${n}`; batchRender(); });
-  if (b.cancel) return;
+  const lines = await readAllLines(card, (i, n) => prog(`辨識中… ${i}/${n}`));
+  if (cancelled()) return { cancel: true };
   // 轉了 90 度還認不出是什麼證件：可能轉反了，換另一個方向
-  if (rot === 90 && !guessType(lines)) return batchOne(it, b, 270);
-  const type = guessType(lines) || 'id';
+  if (rot === 90 && !guessType(lines)) return recognizePhoto(photo0, prog, cancelled, 270, hint);
+  const type = guessType(lines) || (hint && hint !== 'auto' ? hint : 'id');   // 認不出種類：用你選的種類
   setType(type);
   let r = null;
   if (type === 'id') {
@@ -136,7 +137,7 @@ async function batchOne(it, b, rot) {
       // 推算的範圍不會剛剛好：放寬一點，但卡片外面一段距離的字（旁邊紙上的）不要
       idLines = lines.map(L => ({ ...L, x0: nx(L.x0), x1: nx(L.x1), y0: ny(L.y0), y1: ny(L.y1), cx: nx(L.cx), cy: ny(L.cy) }))
         .filter(L => L.cx > -0.04 && L.cx < 1.04 && L.cy > -0.06 && L.cy < 1.04);
-      if (outside) idLines = await readAllLines(idCard, (i, n) => { it.msg = `辨識中（卡片）… ${i}/${n}`; batchRender(); });   // 卡片有一部分剛剛沒讀到：整張卡重讀
+      if (outside) idLines = await readAllLines(idCard, (i, n) => prog(`辨識中（卡片）… ${i}/${n}`));   // 卡片有一部分剛剛沒讀到：整張卡重讀
     }
     // 兩種讀法都跑（專用讀法＋文字標籤），對得上才算有把握；對不上的欄位標「請核對」
     const q = parseIdLines(idLines); delete q._byLabel;
@@ -207,6 +208,16 @@ async function batchOne(it, b, rot) {
     await runOcr(card, lines);
     r = collectRecord(); r.sex = $('sex').value || inferSex(r);
   }
+  readAllLines.last = lines;
+  return { r, lines, box, photo, card };
+}
+
+async function batchOne(it, b) {
+  const res = await recognizePhoto(await loadPhoto(it.file), t => { it.msg = t; batchRender(); }, () => b.cancel);
+  if (res.cancel) return;
+  const { r, lines, box, photo } = res;
+  const logFail = async (msg, r, ls) => dbgSave({ kind: 'fail', img: await smallPhoto(photo), msg, got: dbgPick(r), ocr: ocrText(ls) });
+  if (res.fail) { it.st = 'fail'; it.msg = res.fail; await logFail(it.msg, {}, []); return; }
   if (!recordOk(r)) {
     it.st = 'fail';
     it.msg = `沒讀完整（${[!primaryName(r) && '姓名', !birthOk(r.type, r.birth) && '生日', !(validId(r.idno || '') || (EN_FIRST(r.type) && r.ppno)) && '號碼'].filter(Boolean).join('、')}）`;
