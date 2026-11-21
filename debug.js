@@ -1,6 +1,10 @@
 // ===== 除錯紀錄：相簿匯入辨識失敗、人工改過的資料 → 保存照片＋辨識原文，匯出 ZIP 傳給開發者 =====
 // 只存在這支手機；裡面有客人的證件照片，傳完請按「清除」
 const DBG_DB = 'posid-debug', DBG_KEEP = 80;
+// 「記錄全部（測試用）」：成功的也匯出（平常只匯出失敗和修正）
+const dbgAllOn = () => localStorage.getItem('posid_dbgall') === '1';
+function dbgAllSet(on) { localStorage.setItem('posid_dbgall', on ? '1' : '0'); dbgRender(); }
+const ocrText = ls => (ls || []).map(L => `${L.t}　@${L.x0.toFixed(2)},${L.y0.toFixed(2)}-${L.x1.toFixed(2)},${L.y1.toFixed(2)}`).join('\n');
 function dbgDb() {
   return new Promise((ok, no) => {
     const r = indexedDB.open(DBG_DB, 1);
@@ -28,7 +32,8 @@ async function dbgSave(entry) {
   try {
     await dbgTx('readwrite', st => st.add({ t: new Date().toISOString(), ver: DBG_VER(), ...entry }));
     const all = await dbgAll();
-    const old = all.filter(x => x.kind === 'pending'); if (old.length > DBG_KEEP) await dbgTx('readwrite', st => old.slice(0, old.length - DBG_KEEP).forEach(x => st.delete(x.id)));
+    const keepP = dbgAllOn() ? 300 : DBG_KEEP;
+    const old = all.filter(x => x.kind === 'pending'); if (old.length > keepP) await dbgTx('readwrite', st => old.slice(0, old.length - keepP).forEach(x => st.delete(x.id)));
     const rest = all.filter(x => x.kind !== 'pending'); if (rest.length > DBG_KEEP) await dbgTx('readwrite', st => rest.slice(0, rest.length - DBG_KEEP).forEach(x => st.delete(x.id)));
   } catch (e) { console.log('debug save', e); }
   dbgRender();
@@ -49,21 +54,29 @@ async function dbgFix(rec, before) {
   dbgRender();
 }
 async function dbgExport() {
-  const all = (await dbgAll()).filter(x => x.kind !== 'pending');
+  const every = dbgAllOn();
+  const all = (await dbgAll()).filter(x => every || x.kind !== 'pending');
   if (!all.length) { alert('目前沒有除錯紀錄'); return; }
   const files = [], enc = new TextEncoder(); let report = '';
   for (const s of all) {
     const dt = new Date(s.t), q = n => String(n).padStart(2, '0');
-    const base = `${String(s.id).padStart(4, '0')}_${s.kind === 'fail' ? '失敗' : '修正'}_${s.got && s.got.type || s.type || ''}_${q(dt.getMonth() + 1)}${q(dt.getDate())}_${q(dt.getHours())}${q(dt.getMinutes())}`;
+    const base = `${String(s.id).padStart(4, '0')}_${s.kind === 'fail' ? '失敗' : s.kind === 'fix' ? '修正' : '成功'}_${s.got && s.got.type || s.type || ''}_${q(dt.getMonth() + 1)}${q(dt.getDate())}_${q(dt.getHours())}${q(dt.getMinutes())}`;
     if (s.img) files.push({ name: base + '.jpg', data: new Uint8Array(await s.img.arrayBuffer()) });
     report += `=== ${base}（版本 ${s.ver || '?'}）\n`;
     if (s.kind === 'fail') report += `錯誤：${s.msg || ''}\n讀到：${JSON.stringify(s.got || {})}\n`;
+    else if (s.kind === 'pending') report += `辨識：${JSON.stringify(s.got || {})}${s.unsure && s.unsure.length ? `\n標請核對：${s.unsure.join('、')}` : ''}${s.note ? `\n備註：${s.note}` : ''}\n（沒有修改）\n`;
     else report += `辨識：${JSON.stringify(s.got || {})}\n正確：${JSON.stringify(s.fixed || {})}\n改了：${(s.changed || []).join('、')}\n`;
     report += `--- 辨識原文 ---\n${s.ocr || '（無）'}\n\n`;
   }
   files.push({ name: 'report.txt', data: enc.encode(report) });
   const d = new Date(), p = n => String(n).padStart(2, '0');
-  shareFile(makeZip(files), `debug_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.zip`, 'application/zip');
+  const name = `debug_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.zip`;
+  const file = new File([makeZip(files)], name, { type: 'application/zip' });
+  let sent = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); sent = true; } catch { return; } }   // 取消分享：不清除
+  else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click(); sent = confirm('檔案已下載。確定已經存好了嗎？按「確定」會清除手機上的除錯紀錄。'); }
+  // 傳出去了就清掉（裡面有客人證件照片，不要一直留在手機）
+  if (sent) { try { await dbgTx('readwrite', st => st.clear()); } catch {} dbgRender(); toast('已匯出，手機上的除錯紀錄已清除'); }
 }
 async function dbgClear() {
   if (!confirm('清除所有除錯紀錄（含照片）？')) return;
@@ -73,9 +86,10 @@ async function dbgClear() {
 async function dbgRender() {
   const el = $('dbgBody'); if (!el) return;
   const all = await dbgAll();
-  const nf = all.filter(x => x.kind === 'fail').length, nx = all.filter(x => x.kind === 'fix').length;
-  el.innerHTML = `<div style="font-size:14px;margin-bottom:6px">辨識失敗 <b>${nf}</b> 張・人工修正 <b>${nx}</b> 筆</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">相簿匯入讀不出來的照片、以及你在核對畫面改過的資料，會自動留下照片和辨識原文。匯出後傳給開發者，就能照實際的錯誤調整。<br>裡面有客人的證件照片，只存在這支手機，傳完請按「清除」。</div>
+  const nf = all.filter(x => x.kind === 'fail').length, nx = all.filter(x => x.kind === 'fix').length, np = all.filter(x => x.kind === 'pending').length, on = dbgAllOn();
+  el.innerHTML = `<div style="font-size:14px;margin-bottom:6px">辨識失敗 <b>${nf}</b> 張・人工修正 <b>${nx}</b> 筆${on ? `・成功 <b>${np}</b> 張` : ''}</div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px"><input type="checkbox" ${on ? 'checked' : ''} onchange="dbgAllSet(this.checked)" style="width:22px;height:22px">記錄全部（測試用）：成功的也留下來一起匯出</label>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">相簿匯入讀不出來的照片、以及你在核對畫面改過的資料，會自動留下照片和辨識原文。匯出後傳給開發者，就能照實際的錯誤調整。<br>裡面有客人的證件照片，只存在這支手機；匯出分享出去後會自動清除。測試完請把「記錄全部」關掉。</div>
     <button class="sec" onclick="dbgExport()">匯出除錯資料 ZIP</button>
     <button class="danger" onclick="dbgClear()">清除除錯紀錄</button>`;
 }

@@ -55,6 +55,7 @@ async function readAllLines(img, onProgress) {
     if (t) lines.push({ ...b, t, p: recRegion.lastMinP, cx: (b.x0+b.x1)/2, cy: (b.y0+b.y1)/2 });
   }
   lines.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  readAllLines.last = lines;          // 除錯紀錄用
   return lines;
 }
 
@@ -429,7 +430,7 @@ function parsePassportLines(lines) {
   if (enLine) {
     const h = enLine.y1 - enLine.y0;
     const same = [enLine, ...lines.filter(L => L !== enLine && Math.abs(L.cy - enLine.cy) < h * 0.6)];
-    const zh = same.map(L => (L.t.match(/[\u4e00-\u9fff]{2,4}/) || [''])[0]).find(z => z && !/姓名|國籍|護照|中華民國/.test(z));
+    const zh = same.map(L => (L.t.match(/[\u4e00-\u9fff]{2,4}/) || [''])[0]).find(z => z && !/姓名|國籍|国籍|護照|中華民國|性[別别]|日期|號碼|号码/.test(z));
     if (zh) r.name = zh;
   }
   if (r.name && r.nameEn) fixSurname(r, r.nameEn.split(/[\s,]+/)[0]);

@@ -108,7 +108,6 @@ async function batchOne(it, b, rot) {
   }
   if (rot) { photo = rotCanvas(photo, rot); boxes = await detectLines(photo); }
   const box = docBox(boxes, photo.width, photo.height);
-  const ocrText = ls => (ls || []).map(L => `${L.t}　@${L.x0.toFixed(2)},${L.y0.toFixed(2)}-${L.x1.toFixed(2)},${L.y1.toFixed(2)}`).join('\n');
   const logFail = async (msg, r, ls) => dbgSave({ kind: 'fail', img: await smallPhoto(photo), msg, got: dbgPick(r), ocr: ocrText(ls) });
   if (!box) { it.st = 'fail'; it.msg = '找不到證件上的字（太遠、太暗或反光）'; await logFail(it.msg, {}, []); return; }
   const sw = (box.x1 - box.x0) * photo.width, sh = (box.y1 - box.y0) * photo.height;
@@ -236,7 +235,7 @@ async function batchOne(it, b, rot) {
   const rec = { ...r, confirmed: false, unsure: lastUnsure.slice(), mrz: !!lastParse._back };
   if (g) rec.grp = g.id;
   const rid = storeRecord(rec, lastCrop);
-  dbgSave({ kind: 'pending', rid, img: await smallPhoto(photo), got: dbgPick(rec), ocr: ocrText(lines) });   // 之後在核對畫面改了才會變成「修正」紀錄
+  dbgSave({ kind: 'pending', rid, img: await smallPhoto(photo, dbgAllOn() ? 1400 : 1600), got: dbgPick(rec), unsure: rec.unsure, ocr: ocrText(lines) });   // 之後在核對畫面改了才會變成「修正」紀錄
   clearFields(); $('cardView').style.display = 'none';
   it.st = 'ok'; it.msg = `${(rec.unsure || []).length ? '⚠ ' : '✓ '}${primaryName(r)}　${r.birth || ''}　${shownNo(r)}`;
   it.rid = rid; it.flip = r.type === 'arc' && !lastParse._back && (rec.unsure || []).length > 0;   // 居留證正面有 ⚠：可以補拍背面更正

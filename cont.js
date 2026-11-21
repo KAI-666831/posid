@@ -188,6 +188,7 @@ async function contTick() {
       if (m) {
         cont.flip = null; cont.cand = null; cont.tries = 0;
         const k = cont.recent.findIndex(x => x.rid === m.rid); if (k >= 0) cont.recent[k] = { ...m }; renderRecent();
+        if (dbgAllOn()) smallPhoto(card, 1400).then(img => dbgSave({ kind: 'pending', rid: m.rid + '_back', img, got: dbgPick(m), note: '居留證背面更正', ocr: ocrText(readAllLines.last) }));
         beep(true); contUI(`${m.unsure.length ? '⚠' : '✓'} 已用背面更正：${primaryName(m)}　${shownNo(m)}，請換下一位`, '#16a34a');
         clearFields(); $('cardView').style.display = 'none';
         cont.state = 'remove'; cont.sig = f; return;
@@ -226,6 +227,7 @@ async function contTick() {
         const rid = storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un], mrz: !!lastParse._back }), lastCrop);
         cont.count++; if ($('contCount')) $('contCount').textContent = cont.count;
         cont.recent.unshift({ ...r, rid, unsure:[...un] }); renderRecent();
+        if (dbgAllOn()) smallPhoto(card, 1400).then(img => dbgSave({ kind: 'pending', rid, img, got: dbgPick({ ...r, unsure:[...un] }), unsure: [...un], ocr: ocrText(readAllLines.last) }));   // 測試期間：成功的也留下來
         lastOcrMs = performance.now() - t0;
         if (r.type === 'arc' && !lastParse._back && un.size) {
           // 居留證正面有 ⚠：已經存了、也算人數，請翻到背面再掃一次來更正
