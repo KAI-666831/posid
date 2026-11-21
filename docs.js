@@ -235,23 +235,7 @@ async function parseArc(lines, card) {
       if (a1.length > a0.length && a1.length <= a0.length + 3 && a1.endsWith(a0) && isEnName(re)) { r.nameEn = re; break; }
     }
   }
-  // 中文名：英文名正上方那一小段中文（不是最上面的「中華民國」標題）
-  const zh = lines.filter(L => CJK.test(L.t.replace(/\s/g, '')) && !LABELS.test(L.t) && !/姓名|日期|居留|服務站|中華|民國|華民|居留|證/.test(L.t)
-    && (anchor ? (Math.abs(L.cy - anchor.cy) < 0.12 && L.x1 < 0.6) : (L.cy > top - 0.03 && L.cy < bottom)))
-    // 新式居留證中文名在英文名「上面」；有些舊式在下面：先找上面最近的
-    .sort((a, b) => anchor ? ((a.cy > anchor.cy) - (b.cy > anchor.cy)) || (Math.abs(a.cy - anchor.cy) - Math.abs(b.cy - anchor.cy)) : a.cy - b.cy);
-  r.name = zh.length ? zh[0].t.replace(/\s/g, '') : '';
-  // 中文名重讀幾次（稍微放大範圍），取模型最有把握的那次
-  if (card && zh.length) {
-    const L = zh[0]; let best = r.name, bp = -1;
-    for (const pd of [0, 0.01, 0.02]) {
-      const t = (await recRegion(card, Math.max(0, L.x0 - pd * 2), L.y0 - pd, Math.min(1, L.x1 + pd * 2), L.y1 + pd)).replace(/[^一-鿿]/g, '');
-      const p = recRegion.lastMinP ?? 0;
-      if (/^[一-鿿]{2,5}$/.test(t) && p > bp) { best = t; bp = p; }
-    }
-    r.name = toTrad(best);
-    if (bp < 0.5) r._zhLow = true;      // 中文名模型沒把握（例如「羅」讀成「海」）→ 標請核對
-  }
+  // 中文名不讀：模型常讀錯（羅→海），名單只用英文名
   // 正面的護照號碼沒有檢查碼、常讀錯：先不用，只用有檢查碼的統一證號（要護照號碼請掃背面）
   delete r.ppno;
   return r;

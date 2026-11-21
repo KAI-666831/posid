@@ -13,7 +13,7 @@ function inferSex(r) {
   return '';
 }
 // 名單上的寫法：本國人用中文名、民國生日、身分證；外籍用「英文名 中文名」、西元生日、護照號碼
-function formName(r) { return isForeign(r) ? [r.nameEn, r.name].filter(Boolean).join(' ') : (r.name || r.nameEn || ''); }
+function formName(r) { return r.type === 'arc' && r.nameEn && r.role === undefined ? r.nameEn : isForeign(r) ? [r.nameEn, r.name].filter(Boolean).join(' ') : (r.name || r.nameEn || ''); }   // 居留證乘客只用英文名
 function formId(r)   { return isForeign(r) ? (r.ppno || r.idno || '') : (r.idno || r.ppno || ''); }
 // 名單號碼後面：護照號碼標（護），外籍統一證號標（統），台灣身分證不標
 function idTag(r) { if (r.role !== undefined) return '';   // 船員那幾列不標
