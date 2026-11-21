@@ -252,6 +252,8 @@ async function parseArc(lines, card) {
     r.name = toTrad(best);
     if (bp < 0.5) r._zhLow = true;      // 中文名模型沒把握（例如「羅」讀成「海」）→ 標請核對
   }
+  // 正面的護照號碼沒有檢查碼、常讀錯：先不用，只用有檢查碼的統一證號（要護照號碼請掃背面）
+  delete r.ppno;
   return r;
 }
 
