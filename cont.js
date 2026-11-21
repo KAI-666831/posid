@@ -182,7 +182,9 @@ async function contTick() {
       }
       // 兩次一樣：姓名取比較可信的那個（常見姓氏、三個字優先）
       const nv = {}; [cont.cand, r].filter(Boolean).forEach(x => { const n = primaryName(x); if (n) nv[n] = (nv[n] || 0) + 1; });
-      const un = new Set([...(cont.candUnsure || []), ...lastUnsure]);
+      // 兩次讀到的號碼、生日一樣（上面已經比過）→ 不用再標；其他欄位兩次都標才標（只有一次標，多半是那一格畫面晃到）
+      const c1 = new Set(cont.candUnsure || lastUnsure);
+      const un = new Set(lastParse._back ? lastUnsure : lastUnsure.filter(k => c1.has(k) && !['idno', 'birth', 'ppno'].includes(k)));
       if (Object.keys(nv).length > 1) un.add(EN_FIRST(r.type) ? 'nameEn' : 'name');   // 兩次讀到的名字不一樣 → 請核對
       if (!EN_FIRST(r.type)) r.name = pickName(nv) || r.name;
       cont.cand = null; cont.tries = 0;
