@@ -197,7 +197,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-k</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-l</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -835,6 +835,7 @@ async function runGeneric(card, log, preLines) {
   const g = guessType(lines);
   if (g && g !== docType && g !== 'id') setType(g);
   const r = await ({ arc:parseArc, passport:parsePassportLines, seaman:parseSeaman, nhi:parseNhi, dl:parseDl })[docType](lines, card);
+  lastParse = r;
   if (r.birth && !birthOk(docType, r.birth)) r.birth = '';        // 不合理的生日當作沒讀到
   for (const k of ALL_F) if (r[k] && TYPES[docType].f[k]) $(k).value = r[k];
   if (!$('sex').value) {
@@ -865,7 +866,31 @@ async function runGeneric(card, log, preLines) {
   $('status').textContent = miss.length ? `完成。沒讀到：${miss.join('、')}，可直接手動填。` : '完成，請核對後儲存。';
 }
 
+// 最近一次解析的額外資訊（例如 _back＝讀的是居留證背面）
+let lastParse = {};
+// 居留證背面：如果這個人剛剛已經用正面存過（統一證號一樣），就用背面有檢查碼的資料更正那一筆，不另外存、不多算人數
+// flipRid：剛剛正面有 ⚠、請你翻面的那一筆（背面沒讀到統一證號時，用生日對）
+function arcBackMerge(r, flipRid) {
+  if (!lastParse._back || r.type !== 'arc') return null;
+  const a = load();
+  let i = r.idno ? a.findIndex(x => x.type === 'arc' && x.idno === r.idno) : -1;
+  if (i < 0 && flipRid) { const j = a.findIndex(x => x.rid === flipRid); if (j >= 0 && sameBirth(a[j], r)) i = j; }
+  // 背面沒讀到統一證號：同生日、英文名有一段一樣（例如 WICAKSONO）的正面那一筆
+  if (i < 0) {
+    const words = n => (n || '').toUpperCase().split(/[^A-Z]+/).filter(w => w.length >= 4);
+    const rw = words(r.nameEn);
+    const c = a.map((x, j) => j).filter(j => a[j].type === 'arc' && !a[j].mrz && sameBirth(a[j], r) && words(a[j].nameEn).some(w => rw.includes(w)));
+    if (c.length === 1) i = c[0];
+  }
+  if (i < 0 || a[i].mrz) return null;                     // 沒存過，或之前就是用背面存的（那是重複）
+  const x = a[i];
+  Object.assign(x, { nameEn: r.nameEn || x.nameEn, ppno: r.ppno || x.ppno, idno: x.idno || r.idno, birth: r.birth || x.birth, birthAd: r.birthAd || x.birthAd,
+    sex: r.sex || x.sex, nat: r.nat || x.nat, mrz: true, unsure: (lastUnsure || []).filter(k => k === 'nameEn') });
+  store(a); render();
+  return x;
+}
 async function runOcr(card, preLines) {
+  lastParse = {};
   const view = $('cardView');
   view.width = card.width; view.height = card.height;
   view.getContext('2d').drawImage(card, 0, 0); view.style.display = 'block';

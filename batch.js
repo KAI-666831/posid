@@ -33,6 +33,18 @@ function batchRetake(i) {
   inp.click();
 }
 
+// 居留證正面有 ⚠：拍背面，讀完會更正那一筆（新增一列顯示結果）
+function batchFlip(i) {
+  const inp = $('batchCam');
+  inp.value = '';
+  inp.onchange = () => {
+    const f = inp.files[0]; if (!f || !batch) return;
+    batch.items.push({ file: f, url: URL.createObjectURL(f), st: 'wait', msg: '排隊中（背面）', flipRid: batch.items[i].rid });
+    batchRender(); batchRun();
+  };
+  inp.click();
+}
+
 async function batchRun() {
   if (!batch || batch.running) return;
   batch.running = true;
@@ -206,17 +218,28 @@ async function batchOne(it, b, rot) {
     await logFail(it.msg, r, lines);
     return;
   }
+  if (lastParse._back) {
+    // 居留證背面：這個人剛剛用正面存過 → 更正那一筆，不另外存
+    const m = arcBackMerge(r, it.flipRid);
+    if (m) {
+      const mk = m.unsure.length ? '⚠' : '✓';
+      it.st = 'ok'; it.msg = `${mk} 已用背面更正：${primaryName(m)}　${m.birth || ''}　${shownNo(m)}`;
+      const o = b.items.find(x => x.rid === m.rid && x !== it); if (o) { o.flip = false; o.msg = `${mk} ${primaryName(m)}　${m.birth || ''}　${shownNo(m)}（已用背面更正）`; }
+      clearFields(); $('cardView').style.display = 'none'; return;
+    }
+  }
   const c = findConflict(r);
   const og = c && c.kind === 'dup' ? (() => { const o = load().find(x => primaryNo(r) ? primaryNo(x) === primaryNo(r) : primaryName(x) === primaryName(r)); return o && o.grp && grpById(o.grp); })() : null;
   if (c && c.kind === 'dup') { it.st = 'dup'; it.msg = `⚠ 重複：${primaryName(r)} 已經存過${og ? '（' + grpLabel(og) + '）' : ''}，這張不算`; return; }
   if (c) { it.st = 'fail'; it.msg = `⚠ ${c.msg}，沒存，請看實體證件`; await logFail(it.msg, r, lines); return; }
   const g = b.gid ? grpById(b.gid) : null;
-  const rec = { ...r, confirmed: false, unsure: lastUnsure.slice() };
+  const rec = { ...r, confirmed: false, unsure: lastUnsure.slice(), mrz: !!lastParse._back };
   if (g) rec.grp = g.id;
   const rid = storeRecord(rec, lastCrop);
   dbgSave({ kind: 'pending', rid, img: await smallPhoto(photo), got: dbgPick(rec), ocr: ocrText(lines) });   // 之後在核對畫面改了才會變成「修正」紀錄
   clearFields(); $('cardView').style.display = 'none';
   it.st = 'ok'; it.msg = `${(rec.unsure || []).length ? '⚠ ' : '✓ '}${primaryName(r)}　${r.birth || ''}　${shownNo(r)}`;
+  it.rid = rid; it.flip = r.type === 'arc' && !lastParse._back && (rec.unsure || []).length > 0;   // 居留證正面有 ⚠：可以補拍背面更正
   if (g) {
     g.got = (g.got || 0) + 1; grpSave();
     if (g.got >= g.want && g.state !== 'done') grpFinish(g, g.got);
@@ -381,6 +404,7 @@ function batchRender() {
     <div class="b-list">${batch.items.map((it, i) => `<div class="b-row ${it.st}">
       <img src="${it.url}" alt="">
       <div class="b-msg">${icon[it.st] || ''} ${esc(it.msg)}
-        ${it.st === 'fail' || it.st === 'dup' ? `<div><button class="g-btn" onclick="batchRetake(${i})">📷 重拍這張</button></div>` : ''}</div></div>`).join('')}</div>
+        ${it.st === 'fail' || it.st === 'dup' ? `<div><button class="g-btn" onclick="batchRetake(${i})">📷 重拍這張</button></div>` : ''}
+        ${it.flip ? `<div><button class="g-btn" onclick="batchFlip(${i})">📷 補拍背面</button></div>` : ''}</div></div>`).join('')}</div>
     <div class="b-bot"><button class="sec" onclick="batchStart(${batch.gid ? `'${batch.gid}'` : 'null'})">＋ 再加照片</button><button onclick="batchClose()">完成</button></div>`;
 }

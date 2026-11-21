@@ -182,9 +182,20 @@ async function contTick() {
       r = collectRecord(); r.sex = $('sex').value || inferSex(r);
     }
     if (!cont) return;
+    if (recordOk(r) && lastParse._back) {
+      // 居留證背面：剛剛用正面存過的話，直接更正那一筆（不多算人數）
+      const m = arcBackMerge(r, cont.flip && cont.flip.rid);
+      if (m) {
+        cont.flip = null; cont.cand = null; cont.tries = 0;
+        const k = cont.recent.findIndex(x => x.rid === m.rid); if (k >= 0) cont.recent[k] = { ...m }; renderRecent();
+        beep(true); contUI(`${m.unsure.length ? '⚠' : '✓'} 已用背面更正：${primaryName(m)}　${shownNo(m)}，請換下一位`, '#16a34a');
+        clearFields(); $('cardView').style.display = 'none';
+        cont.state = 'remove'; cont.sig = f; return;
+      }
+    }
     if (recordOk(r)) {
-      // 號碼要連續讀到兩次一樣才存（檢查碼抓不到 3↔8、0↔6 這類錯）
-      const same = cont.cand && primaryNo(cont.cand) === primaryNo(r) && (cont.cand.birth || '') === (r.birth || '');
+      // 號碼要連續讀到兩次一樣才存（檢查碼抓不到 3↔8、0↔6 這類錯）；居留證背面每段都有檢查碼，讀一次就夠
+      const same = lastParse._back || (cont.cand && primaryNo(cont.cand) === primaryNo(r) && (cont.cand.birth || '') === (r.birth || ''));
       if (!same) {
         cont.tries = (cont.tries || 0) + 1;
         if (cont.tries >= 5) {
@@ -198,7 +209,7 @@ async function contTick() {
         return;
       }
       // 兩次一樣：姓名取比較可信的那個（常見姓氏、三個字優先）
-      const nv = {}; [cont.cand, r].forEach(x => { const n = primaryName(x); if (n) nv[n] = (nv[n] || 0) + 1; });
+      const nv = {}; [cont.cand, r].filter(Boolean).forEach(x => { const n = primaryName(x); if (n) nv[n] = (nv[n] || 0) + 1; });
       const un = new Set([...(cont.candUnsure || []), ...lastUnsure]);
       if (Object.keys(nv).length > 1) un.add(EN_FIRST(r.type) ? 'nameEn' : 'name');   // 兩次讀到的名字不一樣 → 請核對
       if (!EN_FIRST(r.type)) r.name = pickName(nv) || r.name;
@@ -212,11 +223,18 @@ async function contTick() {
       }
       else if (c) { beep(false); contUI(`⚠ ${c.msg}。沒有存檔，請看實體證件，用單張掃描確認`, '#dc2626'); }
       else {
-        storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un] }), lastCrop);
+        const rid = storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un], mrz: !!lastParse._back }), lastCrop);
         cont.count++; if ($('contCount')) $('contCount').textContent = cont.count;
-        cont.recent.unshift({ ...r, unsure:[...un] }); renderRecent();
+        cont.recent.unshift({ ...r, rid, unsure:[...un] }); renderRecent();
         lastOcrMs = performance.now() - t0;
-        beep(true); contUI(`✓ ${primaryName(r)}　${shownNo(r)}　已存檔，請移開（${(lastOcrMs / 1000).toFixed(1)} 秒）`, '#16a34a');
+        if (r.type === 'arc' && !lastParse._back && un.size) {
+          // 居留證正面有 ⚠：已經存了、也算人數，請翻到背面再掃一次來更正
+          cont.flip = { rid }; beep(true);
+          contUI(`⚠ ${primaryName(r)} 已存，但有欄位要核對 → 請把卡片翻到背面再掃一次`, '#ea580c');
+        } else {
+          cont.flip = null;
+          beep(true); contUI(`✓ ${primaryName(r)}　${shownNo(r)}　已存檔，請移開（${(lastOcrMs / 1000).toFixed(1)} 秒）`, '#16a34a');
+        }
         groupGot();
       }
       clearFields(); $('cardView').style.display = 'none';
