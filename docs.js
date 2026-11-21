@@ -81,7 +81,54 @@ const NATS = ['越南','印尼','菲律賓','泰國','緬甸','馬來西亞','�
 const MONTHS = { JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12 };
 
 // ---------- 居留證 ----------
+// ---------- 居留證背面：三行機讀碼（MRZ），每段有檢查碼 ----------
+// 第 1 行 I<TWN＋護照號碼(9)＋檢查碼＋選用欄(裡面有統一證號)；第 2 行 生日(6)＋檢查碼＋性別＋到期日(6)＋檢查碼＋國籍；第 3 行 姓名
+const MRZ_NAT = { IDN:'印尼', VNM:'越南', PHL:'菲律賓', THA:'泰國', MYS:'馬來西亞', MMR:'緬甸', IND:'印度', CHN:'中國', JPN:'日本', KOR:'韓國', USA:'美國', LKA:'斯里蘭卡', BGD:'孟加拉', KHM:'柬埔寨', NPL:'尼泊爾' };
+function mrzRows(lines) {
+  // 同一列被切成好幾段時接起來
+  const rows = [];
+  for (const L of lines.slice().sort((a, b) => a.cy - b.cy)) {
+    const row = rows.find(R => Math.abs(R.cy - L.cy) < (L.y1 - L.y0) * 0.6);
+    if (row) row.ls.push(L); else rows.push({ cy: L.cy, ls: [L] });
+  }
+  return [...lines.map(L => L.t), ...rows.filter(R => R.ls.length > 1).map(R => R.ls.sort((a, b) => a.x0 - b.x0).map(L => L.t).join(''))]
+    .map(t => t.toUpperCase().replace(/\s/g, '').replace(/[>«‹(\[{]/g, '<'));
+}
+function parseArcBack(lines) {
+  const ts = mrzRows(lines), r = {};
+  let ok1 = false, ok2 = false;
+  for (const t of ts) {                                   // 第 1 行
+    const m = t.match(/[I1L][<K]?TW[NM]([A-Z0-9<]{9})([0-9OQDILSBZ])([A-Z0-9<]{0,15})/);
+    if (!m) continue;
+    if (mrzCheck(m[1]) === +toDigit(m[2])) { r.ppno = m[1].replace(/<+$/, ''); ok1 = true; }
+    const ui = (m[3] + t).match(/[A-Z][89A-D]\d{8}/g) || [];
+    const v = ui.find(validId); if (v) r.idno = v;
+    if (ok1) break;
+  }
+  for (const t of ts) {                                   // 第 2 行
+    const m = toDigit(t.slice(0, 7)) + t.slice(7);
+    const mm = (/^\d{7}/.test(m) ? m : t).match(/([0-9OQDILSBZ]{6})([0-9OQDILSBZ])([MF<])([0-9OQDILSBZ]{6})([0-9OQDILSBZ])([A-Z0<]{3})/);
+    if (!mm) continue;
+    const dob = toDigit(mm[1]);
+    if (mrzCheck(dob) !== +toDigit(mm[2])) continue;
+    r.birth = mrzDate(dob, true); r.sex = mm[3] === 'F' ? '女' : mm[3] === 'M' ? '男' : '';
+    const nat = toAlpha(mm[6]); r.nat = MRZ_NAT[nat] || nat; ok2 = true; break;
+  }
+  for (const t of ts) {                                   // 第 3 行：只有字母和 <，裡面有 <<
+    if (/^[I1L][<K]?TW/.test(t) || /\d{4}/.test(t)) continue;
+    const u = toAlpha(t).replace(/[^A-Z<]/g, '');
+    if (!/^[A-Z]{2,}/.test(u) || !/<{2}|<$/.test(u)) continue;
+    const body = u.replace(/[<KC]{3,}$/, '').replace(/<+$/, '');   // 後面一串 < 常被讀成 K 或 C
+    const parts = body.split(/<{2,}/).map(p => p.replace(/</g, ' ').trim()).filter(Boolean);
+    if (parts.length) { r.nameEn = parts.join(' '); break; }
+  }
+  if (!(ok2 && (ok1 || r.idno) && r.nameEn)) return null;
+  r.mrz = true; r._back = true;
+  return r;
+}
+
 async function parseArc(lines, card) {
+  { const b = parseArcBack(lines); if (b) return b; }    // 拍的是背面：直接用機讀碼
   const r = {};
   const ids = findIds(lines); if (ids.length) { r.idno = ids[0].v; }
   const dates = [];

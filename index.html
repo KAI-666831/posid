@@ -197,7 +197,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-f</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-g</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -375,7 +375,7 @@ const CARD = 85.6/54, BOOK = 125/88;
 const TYPES = {
   id:       { label:'身分證', ratio:CARD, scan:'📷 掃描身分證正面', hint:'把身分證正面對準綠框，填滿框框、避開反光', date:'roc',
               f:{ name:'姓名', sex:'性別', birth:'出生年月日（民國）', idno:'身分證字號' } },
-  arc:      { label:'居留證', ratio:CARD, scan:'📷 掃描居留證正面', hint:'把居留證正面對準綠框，避開雷射貼紙反光', date:'ad',
+  arc:      { label:'居留證', ratio:CARD, scan:'📷 掃描居留證（背面最準）', hint:'翻到背面，三行英數字整個拍進綠框（正面也可以，但容易反光讀錯）', date:'ad',
               f:{ nameEn:'英文姓名', ppno:'護照號碼', sex:'性別', birth:'出生日期（西元）', nat:'國籍', idno:'統一證號', name:'中文姓名' } },
   passport: { label:'護照',   ratio:BOOK, scan:'📷 掃描護照資料頁', hint:'對準有照片的那一頁，最下面兩行英數字要拍進去', date:'ad',
               f:{ nameEn:'英文姓名', ppno:'護照號碼', sex:'性別', birth:'出生日期（西元）', nat:'國籍', name:'中文姓名', idno:'身分證字號（台灣護照）' } },
@@ -819,7 +819,7 @@ function clearFields() {
 // 依文字內容判斷是哪種證件（選錯類別時自動切換）
 function guessType(lines) {
   const all = lines.map(L => L.t).join(' ');
-  if (/居留|Resident|ARC\b/i.test(all)) return 'arc';
+  if (/居留|Resident|ARC\b/i.test(all) || lines.some(L => /^[I1L][<K]?TW[NM][A-Z0-9]/.test(L.t.toUpperCase().replace(/\s/g, '')))) return 'arc';   // 居留證背面第一行 I<TWN
   if (/健康保|HEALTH\s*INS/i.test(all)) return 'nhi';
   if (/駕駛執照|駕照號碼|交通部|驾驶|執照|执照|[重輕轻]型機車|[重輕轻]型机车|汽車駕|大[貨货]車|小型車/.test(all)) return 'dl';
   if (/<<|PASSPORT|護照號|HO\s*CHIEU/i.test(all)) return 'passport';
@@ -853,7 +853,7 @@ async function runGeneric(card, log, preLines) {
   if (r._surFix || r._zhLow) un.push('name');   // 中文的姓跟英文拼音對不上
   if (!nm) un.push(nameK);
   else if (docType === 'seaman') { if ((r._nameConf ?? 2) < 2) un.push('name'); }     // 船員證名字是投票讀的：同樣結果至少要讀到兩次
-  else if (lineP(nm) < 0.85) un.push(nameK);
+  else if (lineP(nm) < (r._back ? 0.5 : 0.85)) un.push(nameK);   // 居留證背面的名字是機讀碼字型，模型給的分數本來就偏低
   if (!$('birth').value || !birthOk(docType, $('birth').value)) un.push('birth');
   if (!$(noK).value && !(en && $('idno').value)) un.push(noK);
   else if (!en && $('idno').value && !validId($('idno').value.trim().toUpperCase())) un.push('idno');
