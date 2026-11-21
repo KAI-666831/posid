@@ -197,7 +197,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-b</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-c</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -391,7 +391,7 @@ const ALL_F = ['name','nameEn','sex','birth','idno','ppno','nat','docno'];
 const EN_FIRST = t => t === 'passport' || t === 'arc';
 const primaryName = r => (EN_FIRST(r.type) ? (r.nameEn || r.name) : (r.name || r.nameEn)) || '';
 const primaryNo   = r => (EN_FIRST(r.type) ? (r.ppno || r.idno) : (r.idno || r.ppno)) || '';
-// 畫面上顯示的號碼後面加（護）（統）：護照號碼、外籍人士的統一證號（第 2 碼是 8 9 A B C D）。台灣身分證不加。匯出的 CSV 不加。
+// 畫面上顯示的號碼後面加（護）（統）：護照號碼、外籍人士的統一證號（第 2 碼是 8 9 A B C D）。台灣身分證不加。CSV 放在「備註」欄。
 const noTag = r => { const n = primaryNo(r); if (!n) return ''; if (n === r.ppno) return '（護）'; return (r.type === 'arc' || /^[A-Z][89A-D]/.test(n)) ? '（統）' : ''; };
 const shownNo = r => primaryNo(r) ? primaryNo(r) + noTag(r) : '';
 let docType = 'id';
@@ -1042,13 +1042,13 @@ function exportSimple() {
   const a = load(); if (!a.length) { alert('還沒有資料'); return; }
   const ad = r => (r.birthAd || (EN_FIRST(r.type) ? r.birth : rocToAd(r.birth || '').replace('西元 ','')) || r.birth || '').replace(/-/g, '/');
   const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-  downloadCsv([['姓名','出生年月日','身分證字號/護照號碼'], ...a.map(r => [primaryName(r), ad(r), primaryNo(r)])], `namelist_${stamp}.csv`);
+  downloadCsv([['姓名','出生年月日','身分證字號/護照號碼','備註'], ...a.map(r => [primaryName(r), ad(r), primaryNo(r), noTag(r)])], `namelist_${stamp}.csv`);
 }
 function exportCsv() {
-  const rows = [['類別','姓名(主要)','證號(主要)','中文姓名','英文姓名','出生日期(證件上)','出生日期(西元)','身分證/統一證號','護照號碼','國籍','手冊號碼','客人確認','時間'],
+  const rows = [['類別','姓名(主要)','證號(主要)','中文姓名','英文姓名','出生日期(證件上)','出生日期(西元)','身分證/統一證號','護照號碼','國籍','手冊號碼','客人確認','時間','備註'],
     ...load().map(r => [TYPES[r.type||'id']?.label||'', primaryName(r), primaryNo(r), r.name||'', r.nameEn||'', r.birth||'',
       r.birthAd || (r.type==='id'||!r.type ? rocToAd(r.birth||'').replace('西元 ','') : r.birth||''),
-      r.idno||'', r.ppno||'', r.nat||'', r.docno||'', r.confirmed ? '是' : '', r.t])];
+      r.idno||'', r.ppno||'', r.nat||'', r.docno||'', r.confirmed ? '是' : '', r.t, noTag(r)])];
   const csv = '﻿' + rows.map(r => r.map(x => `"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
