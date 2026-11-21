@@ -66,7 +66,10 @@ function docBox(boxes, W, H) {
   if (boxes.length < 3) return null;
   const med = a => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
   const cx = boxes.map(b => (b.x0 + b.x1) / 2), cy = boxes.map(b => (b.y0 + b.y1) / 2);
-  const mx = med(cx), my = med(cy);
+  // 中心用「依字的大小加權」的中位數：後面別張證件的字小又碎，不會把中心拉過去；越靠照片中間權重越大
+  const wt = boxes.map((b, i) => (b.x1 - b.x0) * (b.y1 - b.y0) * (1.2 - Math.hypot(cx[i] - 0.5, cy[i] - 0.5)));
+  const wmed = a => { const o = a.map((v, i) => [v, wt[i]]).sort((x, y) => x[0] - y[0]); const tot = wt.reduce((x, y) => x + y, 0); let acc = 0; for (const [v, w] of o) { acc += w; if (acc >= tot / 2) return v; } return o[o.length - 1][0]; };
+  const mx = wmed(cx), my = wmed(cy);
   const sx = med(cx.map(v => Math.abs(v - mx))) * 3 + 0.06, sy = med(cy.map(v => Math.abs(v - my))) * 3 + 0.06;
   const keep = boxes.filter((b, i) => Math.abs(cx[i] - mx) <= sx && Math.abs(cy[i] - my) <= sy);
   if (keep.length < 3) return null;
@@ -198,6 +201,7 @@ async function batchOne(it, b, rot) {
     it.msg = `沒讀完整（${[!primaryName(r) && '姓名', !birthOk(r.type, r.birth) && '生日', !(validId(r.idno || '') || (EN_FIRST(r.type) && r.ppno)) && '號碼'].filter(Boolean).join('、')}）`;
     // 號碼貼著照片邊緣、只讀到 7～9 碼：是被切到了
     if (!validId(r.idno || '') && lines.some(L => /^[A-Z][12]\d{5,7}$/.test(L.t.replace(/\s/g, '')) && (L.x1 > 0.93 || L.y1 > 0.97))) it.msg += '：號碼在照片邊緣被切到，請整張拍進去';
+    else if (lines.some(L => ARC_BACK.test(L.t))) it.msg += '：居留證背面，請拍近一點，讓卡片佔滿大半個畫面、下面三行英數字清楚';
     else if (!box || (box.x1 - box.x0) * (box.y1 - box.y0) < 0.12) it.msg += '：證件在照片裡太小，請拍近一點';
     await logFail(it.msg, r, lines);
     return;

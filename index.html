@@ -197,7 +197,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-g</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/21-h</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -819,7 +819,7 @@ function clearFields() {
 // 依文字內容判斷是哪種證件（選錯類別時自動切換）
 function guessType(lines) {
   const all = lines.map(L => L.t).join(' ');
-  if (/居留|Resident|ARC\b/i.test(all) || lines.some(L => /^[I1L][<K]?TW[NM][A-Z0-9]/.test(L.t.toUpperCase().replace(/\s/g, '')))) return 'arc';   // 居留證背面第一行 I<TWN
+  if (/居留|Resident|ARC\b/i.test(all) || lines.some(L => ARC_BACK.test(L.t.replace(/\s/g, '')))) return 'arc';   // 居留證背面（說明文字、第一行 I<TWN）
   if (/健康保|HEALTH\s*INS/i.test(all)) return 'nhi';
   if (/駕駛執照|駕照號碼|交通部|驾驶|執照|执照|[重輕轻]型機車|[重輕轻]型机车|汽車駕|大[貨货]車|小型車/.test(all)) return 'dl';
   if (/<<|PASSPORT|護照號|HO\s*CHIEU/i.test(all)) return 'passport';
@@ -853,7 +853,7 @@ async function runGeneric(card, log, preLines) {
   if (r._surFix || r._zhLow) un.push('name');   // 中文的姓跟英文拼音對不上
   if (!nm) un.push(nameK);
   else if (docType === 'seaman') { if ((r._nameConf ?? 2) < 2) un.push('name'); }     // 船員證名字是投票讀的：同樣結果至少要讀到兩次
-  else if (lineP(nm) < (r._back ? 0.5 : 0.85)) un.push(nameK);   // 居留證背面的名字是機讀碼字型，模型給的分數本來就偏低
+  else if (r._back ? (r._nameP ?? 0) < 0.6 : lineP(nm) < 0.85) un.push(nameK);   // 居留證背面：名字那一行沒有檢查碼，看模型的把握
   if (!$('birth').value || !birthOk(docType, $('birth').value)) un.push('birth');
   if (!$(noK).value && !(en && $('idno').value)) un.push(noK);
   else if (!en && $('idno').value && !validId($('idno').value.trim().toUpperCase())) un.push('idno');

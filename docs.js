@@ -91,44 +91,96 @@ function mrzRows(lines) {
     const row = rows.find(R => Math.abs(R.cy - L.cy) < (L.y1 - L.y0) * 0.6);
     if (row) row.ls.push(L); else rows.push({ cy: L.cy, ls: [L] });
   }
-  return [...lines.map(L => L.t), ...rows.filter(R => R.ls.length > 1).map(R => R.ls.sort((a, b) => a.x0 - b.x0).map(L => L.t).join(''))]
-    .map(t => t.toUpperCase().replace(/\s/g, '').replace(/[>«‹(\[{]/g, '<'));
+  const norm = t => t.toUpperCase().replace(/\s/g, '').replace(/[>«‹(\[{くㄑ〈]/g, '<');
+  return [...lines.map(L => ({ t: norm(L.t), p: L.p ?? 0.5, slide: !!L.slide })),
+          ...rows.filter(R => R.ls.length > 1 && !R.ls.some(L => L.slide)).map(R => ({ t: norm(R.ls.sort((a, b) => a.x0 - b.x0).map(L => L.t).join('')), p: Math.min(...R.ls.map(L => L.p ?? 0.5)) }))];
 }
 function parseArcBack(lines) {
-  const ts = mrzRows(lines), r = {};
+  const rs = mrzRows(lines), ts = rs.map(o => o.t), r = {};
   let ok1 = false, ok2 = false;
-  for (const t of ts) {                                   // 第 1 行
-    const m = t.match(/[I1L][<K]?TW[NM]([A-Z0-9<]{9})([0-9OQDILSBZ])([A-Z0-9<]{0,15})/);
+  // 同一行可能讀到很多次（滑動重讀）：每個通過檢查碼的結果投票，取出現最多次的（檢查碼偶爾會被兩個錯字剛好抵銷）
+  const tally = () => ({ m: new Map(), add(k, w = 1) { this.m.set(k, (this.m.get(k) || 0) + w); }, top() { return [...this.m].sort((a, b) => b[1] - a[1])[0]?.[0]; } });
+  const docs = tally(), uis = tally(), l2 = tally(), nats = tally();
+  for (const { t, p } of rs) {                            // 第 1 行
+    const m = t.match(/(?:TW[NM]|^\W?[I1LT][<KT]?T[WHV][NM])([A-Z0-9<]{9})([0-9OQDILSBZ])([A-Z0-9<]{0,15})/);   // W 常讀成 H   // 開頭的 I< 常讀錯（AC、1K），從 TWN 開始找
     if (!m) continue;
-    if (mrzCheck(m[1]) === +toDigit(m[2])) { r.ppno = m[1].replace(/<+$/, ''); ok1 = true; }
-    const ui = (m[3] + t).match(/[A-Z][89A-D]\d{8}/g) || [];
-    const v = ui.find(validId); if (v) r.idno = v;
-    if (ok1) break;
+    // 號碼後面補位的 < 常被讀成 S、K、C、Z：換回 < 試試看
+    for (const f of [m[1], m[1].replace(/^([A-Z]{1,2}\d{6,7})[SKCZ]$/, '$1<'), m[1].replace(/^([A-Z]{1,2}\d{6})[SKCZ<][SKCZ]$/, '$1<<')]) {
+      const doc = f.replace(/<+$/, '');
+      if (mrzCheck(f) === +toDigit(m[2]) && /^[A-Z]{1,2}\d{6,8}$/.test(doc)) { docs.add(doc, 1 + p); break; }
+    }
+    ((m[3] + t).match(/[A-Z][89A-D]\d{8}/g) || []).filter(validId).forEach(v => uis.add(v, 1 + p));
   }
-  for (const t of ts) {                                   // 第 2 行
-    const m = toDigit(t.slice(0, 7)) + t.slice(7);
+  if (docs.top()) { r.ppno = docs.top(); ok1 = true; }
+  if (uis.top()) r.idno = uis.top();
+  for (const { t, p } of rs) {                            // 第 2 行
+    const m = toDigit(t.replace(/^\W/, '').slice(0, 7)) + t.replace(/^\W/, '').slice(7);
     const mm = (/^\d{7}/.test(m) ? m : t).match(/([0-9OQDILSBZ]{6})([0-9OQDILSBZ])([MF<])([0-9OQDILSBZ]{6})([0-9OQDILSBZ])([A-Z0<]{3})/);
     if (!mm) continue;
-    const dob = toDigit(mm[1]);
+    const dob = toDigit(mm[1]), exp = toDigit(mm[4]);
     if (mrzCheck(dob) !== +toDigit(mm[2])) continue;
-    r.birth = mrzDate(dob, true); r.sex = mm[3] === 'F' ? '女' : mm[3] === 'M' ? '男' : '';
-    const nat = toAlpha(mm[6]); r.nat = MRZ_NAT[nat] || nat; ok2 = true; break;
+    const expOk = mrzCheck(exp) === +toDigit(mm[5]);       // 到期日的檢查碼也對：比較可信
+    l2.add(`${dob}|${mm[3]}`, 1 + p + (expOk ? 1 : 0)); nats.add(toAlpha(mm[6]));
   }
-  for (const t of ts) {                                   // 第 3 行：只有字母和 <，裡面有 <<
-    if (/^[I1L][<K]?TW/.test(t) || /\d{4}/.test(t)) continue;
+  if (l2.top()) {
+    const [dob, sx] = l2.top().split('|'), nat = nats.top();
+    r.birth = mrzDate(dob, true); r.sex = sx === 'F' ? '女' : sx === 'M' ? '男' : '';
+    r.nat = MRZ_NAT[nat] || nat; ok2 = true;
+  }
+  // 第 3 行：字母和 <，後面一串 <。同一行可能讀到好幾次（滑動重讀），取模型最有把握的那次
+  const names = new Map();
+  for (const { t, p, slide } of rs) {
+    if (/TW[NM]/.test(t) || /\d{3}/.test(t)) continue;
     const u = toAlpha(t).replace(/[^A-Z<]/g, '');
-    if (!/^[A-Z]{2,}/.test(u) || !/<{2}|<$/.test(u)) continue;
-    const body = u.replace(/[<KC]{3,}$/, '').replace(/<+$/, '');   // 後面一串 < 常被讀成 K 或 C
-    const parts = body.split(/<{2,}/).map(p => p.replace(/</g, ' ').trim()).filter(Boolean);
-    if (parts.length) { r.nameEn = parts.join(' '); break; }
+    if (!/^[A-Z]{3,}/.test(u) || !(/<{2,}/.test(u) || /[A-Z]<[A-Z]+<$/.test(u))) continue;
+    const body = u.split(/<{3,}/)[0].replace(/[<KC]{3,}$/, '').replace(/<+$/, '');   // 名字後面是一長串 <（常被讀成 K、C），之後的都是雜訊
+    const parts = body.replace(/(<[A-Z]){1,2}$/, '').split(/<{2,}/).map(q => q.replace(/</g, ' ').trim()).filter(Boolean);   // 結尾單獨一兩個字母是 < 讀錯
+    if (!parts.length) continue;
+    const name = parts.join(' ');
+    names.set(name, { n: (names.get(name)?.n || 0) + 1, p: Math.max(names.get(name)?.p || 0, p), det: (names.get(name)?.det || 0) + (slide ? 0 : 1) });
   }
+  const best = [...names].sort((a, b) => (b[1].n + b[1].p) - (a[1].n + a[1].p))[0];
+  const nTot = [...names.values()].reduce((a, b) => a + b.n, 0);
+  // 名字沒有檢查碼：要「大部分讀法都一樣」而且至少 3 次、模型也有把握，才不標請核對
+  // （沒有滑動重讀、只有偵測到的那一行時，照那一行模型的把握）
+  if (best) { const b = best[1]; r.nameEn = best[0]; r._nameP = b.det === b.n && nTot === b.n ? b.p : (b.n >= 3 && b.n >= nTot * 0.5 && b.p >= 0.5 ? 0.9 : Math.min(b.p, 0.5)); }
   if (!(ok2 && (ok1 || r.idno) && r.nameEn)) return null;
   r.mrz = true; r._back = true;
   return r;
 }
 
+const ARC_BACK = /持[證证超體体]人|入出[國国]|多次入|NIA|renew|revoke|annul|expressly|TW[NM][A-Z0-9]{6}|舊式|旧式|Original|riginal/i;
+// 背面的三行機讀碼字距很寬，偵測常把兩三行框成一個大框、讀成亂碼：
+// 改成看「每一橫列有多少黑點」把字列切出來，一列一列重讀
+async function arcBackRows(card, lines) {
+  // 照片解析度低時三行會糊在一起、切不開：直接用一個「一行高」的窗由上往下滑，每個位置都讀一次，
+  // 機讀碼有檢查碼，讀錯的位置自然對不上，不會被採用
+  const near = lines.filter(L => L.x1 - L.x0 > 0.3);
+  const xa = Math.max(0, Math.min(...near.map(L => L.x0), 0.5) - 0.02), xb = Math.min(1, Math.max(...near.map(L => L.x1), 0.5) + 0.02);
+  const para = lines.filter(L => /持|入出|多次|NIA|renew|revoke|annul|express/i.test(L.t));
+  const top = para.length ? Math.max(0.2, Math.min(...para.map(L => L.y0)) + 0.05) : 0.35;
+  const out = [], kind = t => { const u = t.toUpperCase().replace(/\s/g, ''); return /TW[NM]/.test(u) ? 1 : /^\W?[0-9OQDILSBZ]{7}[MF<]/.test(u) ? 2 : /^[A-Z0-9]{3,}[A-Z0-9<]*<{2,}/.test(u) && !/\d{3}/.test(u) ? 3 : 0; };
+  const read = async (y, hh) => {
+    const t = await recRegion(card, xa, y, xb, y + hh), p = recRegion.lastMinP ?? 0;
+    const o = { t, p, k: kind(t), slide: true, x0: xa, x1: xb, y0: y, y1: y + hh, cx: (xa + xb) / 2, cy: y + hh / 2 };
+    if (t && /[<«]|TW[NM]|\d{6}/.test(t.toUpperCase())) out.push(o);
+    return o;
+  };
+  // 先粗掃一遍找到三行大概的位置，再在每一行附近細讀幾次（不同高度、上下微調），讓投票有足夠票數
+  const coarse = [];
+  for (let y = top; y + 0.075 <= 1.0; y += 0.025) coarse.push(await read(y, 0.075));
+  for (const k of [1, 2, 3]) {
+    const c = coarse.filter(o => o.k === k).sort((a, b) => b.p - a.p)[0]; if (!c) continue;
+    for (const [hh, dy] of [[0.065, -0.01], [0.065, -0.004], [0.065, 0.004], [0.065, 0.01], [0.08, 0], [0.055, 0]]) await read(c.cy - hh / 2 + dy, hh);
+  }
+  return out;
+}
+
 async function parseArc(lines, card) {
   { const b = parseArcBack(lines); if (b) return b; }    // 拍的是背面：直接用機讀碼
+  if (card && lines.some(L => ARC_BACK.test(L.t))) {      // 是背面但機讀碼沒讀好：一列一列重讀
+    const b = parseArcBack([...lines, ...await arcBackRows(card, lines)]); if (b) return b;
+  }
   const r = {};
   const ids = findIds(lines); if (ids.length) { r.idno = ids[0].v; }
   const dates = [];
