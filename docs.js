@@ -226,13 +226,35 @@ async function parseArc(lines, card) {
     for (let j = i - 1; j >= 0 && row[0].x0 - same[j].x1 < 0.06; j--) row.unshift(same[j]);
   }
   r.nameEn = row.map(L => L.t.toUpperCase()).join(' ').replace(/\s+/g,' ').trim();
-  // 第一個字母常被切掉（AGUNG 讀成 GUNG）：整列從卡片左邊重讀一次，多出來的只在前面、最多 3 個字母才採用
-  if (card && row.length) {
-    const y0 = Math.min(...row.map(L => L.y0)), y1 = Math.max(...row.map(L => L.y1)), x1 = Math.max(...row.map(L => L.x1));
-    for (const [dx, dy] of [[0.08, 0.015], [0.06, 0.01], [0.04, 0.005]]) {
-      const re = (await recRegion(card, Math.max(0, row[0].x0 - dx), y0 - dy, Math.min(1, x1 + 0.02), y1 + dy)).toUpperCase().replace(/[^A-Z ]/g, '').replace(/\s+/g, ' ').trim();
-      const a0 = r.nameEn.replace(/[^A-Z]/g, ''), a1 = re.replace(/[^A-Z]/g, '');
-      if (a1.length > a0.length && a1.length <= a0.length + 3 && a1.endsWith(a0) && isEnName(re)) { r.nameEn = re; break; }
+  // 英文名重讀很多次投票：偵測框常把「姓名 Name」標籤、上面的小字中文名黏進來，或切掉第一個字母（AGUNG→GUNG、IBNU→BNU）。
+  // 每次框的位置、高度、左邊界都稍微不同，取「最多次一樣」的讀法；意見很分散就標請核對
+  const rowP = row.length ? Math.min(...row.map(L => L.p ?? 0)) : 0;
+  if (card && row.length && rowP < 0.85) {          // 偵測那次模型就很有把握：不用重讀
+    const y0 = Math.min(...row.map(L => L.y0)), y1 = Math.max(...row.map(L => L.y1)), h = y1 - y0, cy = (y0 + y1) / 2;
+    const xr = Math.min(1, Math.max(...row.map(L => L.x1)) + 0.03);
+    const lbl = lines.find(L => /姓名|Name/i.test(L.t) && L.x0 < 0.35 && L.cy < cy);
+    const xl = Math.max(0, Math.min(row[0].x0, lbl ? lbl.x0 : 1) - 0.02);
+    const votes = new Map(), add = (t, p) => {
+      const u = t.toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!isEnName(u) || u.replace(/ /g, '').length < 4) return;
+      const k = u.replace(/ /g, ''), v = votes.get(k) || { n: 0, p: 0, txt: u };
+      v.n++; if (p > v.p) { v.p = p; if (u.includes(' ') || !v.txt.includes(' ')) v.txt = u; } votes.set(k, v);
+    };
+    add(r.nameEn, rowP);
+    for (const [k, dy] of [[0.65, 0], [0.65, -0.12], [0.65, 0.12], [0.8, 0], [0.55, 0], [0.75, -0.08], [0.75, 0.08]]) for (const x of [xl, xl + 0.02]) {
+      const t = await recRegion(card, x, cy - h * k + h * dy, xr, cy + h * k + h * dy);
+      add(t, recRegion.lastMinP ?? 0);
+    }
+    // 「姓名 Name」標籤緊貼在名字上面時：從標籤下緣開始切，不要把標籤的字讀進來
+    if (lbl && lbl.y1 > y0 && lbl.y1 < cy) for (const [t0, t1] of [[0, 0.01], [-0.006, 0.01], [0.006, 0.015], [0, 0.025]]) for (const x of [xl, xl + 0.02]) {
+      const t = await recRegion(card, x, lbl.y1 + t0, xr, y1 + t1);
+      add(t, recRegion.lastMinP ?? 0);
+    }
+    const all = [...votes.values()], tot = all.reduce((a, v) => a + v.n, 0);
+    const best = all.sort((a, b) => b.n - a.n || b.p - a.p)[0];
+    if (best) {
+      if (best.n >= 3) r.nameEn = best.txt;          // 每次都讀得不一樣：保留偵測到的那次
+      if (best.n < Math.max(3, tot * 0.4)) r._enLow = true;     // 讀法很分散：請核對
     }
   }
   // 中文名不讀：模型常讀錯（羅→海），名單只用英文名
