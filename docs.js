@@ -383,7 +383,7 @@ function parsePassportLines(lines) {
   for (const t of ts) { const m2 = parseMrz2(t); if (m2) { r.ppno = m2.doc; r.nat = m2.nat; r.birth = m2.dob;
     const tw = m2.opt.match(/[A-Z][12]\d{8}/); if (tw && validId(tw[0])) r.idno = tw[0]; r.mrz = true; r.sex = m2.sex === 'F' ? '女' : m2.sex === 'M' ? '男' : ''; break; } }
   for (const t of ts) { let u = t.replace(/^P[^A-Z<]/, 'P<'); if (/^PTWN/.test(u) || (u.length === 43 && /^P[A-Z]{4}/.test(u))) u = 'P<' + u.slice(1);   // 漏讀 P 後面的 <
-    if (!/^P[A-Z<]/.test(u) || !/<</.test(u)) continue;
+    if (!/^[PV][A-Z<]/.test(u) || !/<</.test(u)) continue;
     const m1 = parseMrz1(u); if (m1) { r.nameEn = m1.name; break; } }
   const tw = r.nat === 'TWN' || lines.some(L => /REPUBLIC\s*OF\s*CHINA|中華民國/i.test(L.t));
   if (!r.idno && tw) { const ids = findIds(lines.filter(L => !/<</.test(L.t))); if (ids.length) r.idno = ids[0].v; }
@@ -416,13 +416,13 @@ function parsePassportLines(lines) {
       const zh = txt.match(/[一-鿿]{2,4}/); if (zh && !r.name) r.name = zh[0];
       const en = txt.replace(/[一-鿿]/g, '').toUpperCase().replace(/[^A-Z ,-]/g, ' ').replace(/\s+/g, ' ').trim();
       // 資料頁印的「姓, 名」比 MRZ 好讀（MRZ 的 < 容易跟 I、K 黏在一起讀錯），有就優先用
-      if (!r.nameEn && en.length >= 2) r.nameEn = en.replace(/\s*,\s*/, ', ');
+      if (!r.nameEn && en.length >= 2) { r.nameEn = en.replace(/\s*,\s*/, ', '); r._enRow = true; }
     }
   }
   // 資料頁印的「姓, 名」（一整行，例如 CHEN, KUO-CHIANG）比 MRZ 好讀（MRZ 的 < 常跟 I、K 黏在一起讀錯），有就優先用
   const printed = lines.map(L => L.t.toUpperCase().replace(/\s+/g, ' ').trim().replace(/^([A-Z]{2,})\.\s*(?=[A-Z])/, '$1, ')).find(t => /^[A-Z]{2,}(?: [A-Z]+)?\s*,\s*[A-Z]+(?:[ -][A-Z]+){0,3}$/.test(t) && t.length <= 40);
   // 「NO.REG.」之類的欄位標籤不是名字；MRZ 有讀到名字時，印的姓要跟 MRZ 對得上才換
-  const mrzSur = (r.nameEn || '').split(/[ ,]/)[0];
+  const mrzSur = r._enRow ? '' : (r.nameEn || '').split(/[ ,]/)[0];   // 只有 MRZ 讀到的名字才拿來對；同一列拼起來的可能混進雜字
   if (printed && !/^(NO|REG|TGL|DATE|TYPE|KODE|JENIS)\b/.test(printed) && (!mrzSur || printed.startsWith(mrzSur.slice(0, 3)))) r.nameEn = printed.replace(/\s*,\s*/, ', ');
   // 中文姓名印在英文姓名同一行（例如「劉崧源 LIU, SUNG-YUAN」）：抓同一行的中文
   const enLine = lines.find(L => /[A-Z]{2,}\s*[,.]\s*[A-Z]/.test(L.t.toUpperCase()) && !/</.test(L.t) && !/REPUBLIC|MINISTRY|NO\./.test(L.t.toUpperCase()));   // 逗號常被讀成句點
