@@ -15,6 +15,9 @@ function inferSex(r) {
 // 名單上的寫法：本國人用中文名、民國生日、身分證；外籍用「英文名 中文名」、西元生日、護照號碼
 function formName(r) { return isForeign(r) ? [r.nameEn, r.name].filter(Boolean).join(' ') : (r.name || r.nameEn || ''); }
 function formId(r)   { return isForeign(r) ? (r.ppno || r.idno || '') : (r.idno || r.ppno || ''); }
+// 名單「備註」欄：號碼是護照號碼標（護），外籍統一證號標（統），台灣身分證不標；船員前面加身分
+function idTag(r) { const n = formId(r); if (!n) return ''; if (n === r.ppno) return '（護）'; return (r.type === 'arc' || /^[A-Z][89A-D]/.test(n)) ? '（統）' : ''; }
+function remark(r) { return (r.role !== undefined ? crewRole(r) : '') + idTag(r); }
 function formBirth(r) {
   const b = (r.birth || '').trim();
   let m = b.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
@@ -109,7 +112,7 @@ function rowHtml(no, r) {
   if (!r) return `<tr><td>${no}</td><td></td><td>${sexCell('')}</td><td class="bd">/&emsp;/&emsp;/</td><td></td><td></td></tr>`;
   const [y, m, d] = formBirth(r), nm = formName(r);
   return `<tr><td>${no}</td><td class="${nm.length > 12 ? 'sm' : ''}">${esc(nm)}</td><td>${sexCell(inferSex(r))}</td>
-    <td class="bd">${y}&nbsp;/&nbsp;${m}&nbsp;/&nbsp;${d}</td><td>${esc(formId(r))}</td><td>${esc(r.role !== undefined ? crewRole(r) : '')}</td></tr>`;
+    <td class="bd">${y}&nbsp;/&nbsp;${m}&nbsp;/&nbsp;${d}</td><td>${esc(formId(r))}</td><td>${esc(remark(r))}</td></tr>`;
 }
 function openManifest() {
   try { localStorage.setItem(SHIP_KEY, $('shipName').value.trim()); } catch {}
@@ -156,7 +159,7 @@ function renderManifestCanvas() {
     if (r) {
       cell(formName(r), 1, y);
       const [yy, mm, dd] = formBirth(r); cell(`${yy} / ${mm} / ${dd}`, 3, y);
-      cell(formId(r), 4, y); if (r.role !== undefined) cell(crewRole(r), 5, y);
+      cell(formId(r), 4, y); cell(remark(r), 5, y);
     } else cell('/   /   /', 3, y);
     const sx = r ? inferSex(r) : '';
     const cx = (xs[2] + xs[3]) / 2;
