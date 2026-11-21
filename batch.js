@@ -212,7 +212,7 @@ async function batchOne(it, b, rot) {
   const rid = storeRecord(rec, lastCrop);
   dbgSave({ kind: 'pending', rid, img: await smallPhoto(photo), got: dbgPick(rec), ocr: ocrText(lines) });   // 之後在核對畫面改了才會變成「修正」紀錄
   clearFields(); $('cardView').style.display = 'none';
-  it.st = 'ok'; it.msg = `${(rec.unsure || []).length ? '⚠ ' : '✓ '}${primaryName(r)}　${r.birth || ''}　${primaryNo(r)}`;
+  it.st = 'ok'; it.msg = `${(rec.unsure || []).length ? '⚠ ' : '✓ '}${primaryName(r)}　${r.birth || ''}　${shownNo(r)}`;
   if (g) {
     g.got = (g.got || 0) + 1; grpSave();
     if (g.got >= g.want && g.state !== 'done') grpFinish(g, g.got);

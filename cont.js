@@ -216,7 +216,7 @@ async function contTick() {
         cont.count++; if ($('contCount')) $('contCount').textContent = cont.count;
         cont.recent.unshift({ ...r, unsure:[...un] }); renderRecent();
         lastOcrMs = performance.now() - t0;
-        beep(true); contUI(`✓ ${primaryName(r)}　${primaryNo(r)}　已存檔，請移開（${(lastOcrMs / 1000).toFixed(1)} 秒）`, '#16a34a');
+        beep(true); contUI(`✓ ${primaryName(r)}　${shownNo(r)}　已存檔，請移開（${(lastOcrMs / 1000).toFixed(1)} 秒）`, '#16a34a');
         groupGot();
       }
       clearFields(); $('cardView').style.display = 'none';
@@ -236,7 +236,7 @@ function renderRecent() {
   const r = frameRect();
   box.style.maxHeight = Math.max(80, r.y - 70 - box.offsetTop) + 'px';
   box.innerHTML = cont.recent.length
-    ? cont.recent.map((x, i) => `<div class="cr${i === 0 ? ' new' : ''}${(x.unsure || []).length ? ' un' : ''}"><span class="n">${(x.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(x))}</span><span class="b">${esc(x.birth || '')}</span><span class="i">${esc(primaryNo(x))}</span></div>`).join('')
+    ? cont.recent.map((x, i) => `<div class="cr${i === 0 ? ' new' : ''}${(x.unsure || []).length ? ' un' : ''}"><span class="n">${(x.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(x))}</span><span class="b">${esc(x.birth || '')}</span><span class="i">${esc(shownNo(x))}</span></div>`).join('')
     : '<div class="cr empty">掃描成功的資料會顯示在這裡</div>';
 }
 
