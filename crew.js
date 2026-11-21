@@ -16,7 +16,8 @@ function inferSex(r) {
 function formName(r) { return isForeign(r) ? [r.nameEn, r.name].filter(Boolean).join(' ') : (r.name || r.nameEn || ''); }
 function formId(r)   { return isForeign(r) ? (r.ppno || r.idno || '') : (r.idno || r.ppno || ''); }
 // 名單號碼後面：護照號碼標（護），外籍統一證號標（統），台灣身分證不標
-function idTag(r) { const n = formId(r); if (!n) return ''; if (n === r.ppno) return '（護）'; return (r.type === 'arc' || /^[A-Z][89A-D]/.test(n)) ? '（統）' : ''; }
+function idTag(r) { if (r.role !== undefined) return '';   // 船員那幾列不標
+  const n = formId(r); if (!n) return ''; if (n === r.ppno) return '（護）'; return (r.type === 'arc' || /^[A-Z][89A-D]/.test(n)) ? '（統）' : ''; }
 function remark(r) { return r.role !== undefined ? crewRole(r) : ''; }
 function formBirth(r) {
   const b = (r.birth || '').trim();
