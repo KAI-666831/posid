@@ -180,11 +180,23 @@
 <div id="posView"><iframe src="pos/index.html" title="收銀"></iframe></div>
 <div id="idView">
 <div class="card" id="duoCard">
-  <b>雙機模式</b>
-  <div id="duoRoles" class="seg" style="margin:8px 0">
-    <button data-r="solo">單機</button><button data-r="pos">收銀機</button><button data-r="scan">掃描機</button>
+  <b>副手機</b>
+  <div style="font-size:13px;color:var(--muted);margin-top:2px">兩種用途分開配對，通常是兩支不同的手機</div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line, rgba(128,128,128,.25))">
+    <b style="font-size:16px">📷 掃描機</b>
+    <div style="font-size:13px;color:var(--muted)">另一支手機專門掃證件：這支結帳，那支自動開相機掃這組</div>
+    <div id="duoRoles" class="seg" style="margin:8px 0">
+      <button data-r="solo">單機</button><button data-r="pos">收銀機</button><button data-r="scan">掃描機</button>
+    </div>
+    <div id="duoBody"></div>
   </div>
-  <div id="duoBody"></div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line, rgba(128,128,128,.25))">
+    <b style="font-size:16px">🙋 客人確認螢幕</b>
+    <div style="font-size:13px;color:var(--muted)">拿給客人看的手機：按「給客人確認」，客人在那支手機上確認或修改自己的資料</div>
+    <div id="pairState" style="font-size:14px;margin:6px 0 4px">尚未配對</div>
+    <button class="sec" id="pairBtn" onclick="openPairModal()">配對客人確認螢幕</button>
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">資料加密傳送，轉送伺服器看不到內容。 <a href="#" onclick="unpair();return false">解除配對</a></div>
+  </div>
 </div>
 
 <div class="card" id="grpCard">
@@ -203,7 +215,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/23-d</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/23-e</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -239,13 +251,6 @@
   <button class="sec" onclick="saveRecord()">直接儲存（不確認）</button>
   <button class="sec" onclick="addFormToCrew()">⚓ 加入船員名冊</button>
   <details><summary>辨識原文（除錯用）</summary><pre id="raw"></pre></details>
-</div>
-
-<div class="card">
-  <b>雙機確認</b>
-  <div id="pairState" style="font-size:14px;margin:6px 0 4px">尚未配對副機</div>
-  <button class="sec" id="pairBtn" onclick="openPairModal()">配對副機（給客人看的手機）</button>
-  <div style="font-size:12px;color:var(--muted);margin-top:6px">配對後按「給客人確認」會送到副機。資料加密傳送，轉送伺服器看不到內容。 <a href="#" onclick="unpair();return false">解除配對</a></div>
 </div>
 
 <div class="card">
@@ -292,9 +297,9 @@
 <!-- 配對 QR code -->
 <div id="pairModal">
   <div class="pm-box">
-    <b style="font-size:18px">用副機的「相機」掃這個 QR code</b>
+    <b style="font-size:18px">用要給客人看的那支手機的「相機」掃這個 QR code</b>
     <div id="pairQr"></div>
-    <div style="font-size:14px;color:#555">副機會打開客人確認畫面，連上後這裡會自動關閉。<br>副機不用安裝，用 Safari 開著就好。</div>
+    <div style="font-size:14px;color:#555">那支手機會打開客人確認畫面，連上後這裡會自動關閉。<br>那支手機不用安裝，用瀏覽器開著就好。</div>
     <button class="sec" onclick="closePairModal()">關閉</button>
   </div>
 </div>

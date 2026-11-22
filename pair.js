@@ -60,16 +60,16 @@ const pending = new Map(), pendingCrops = new Map();
 function opState() {
   const el = $('pairState'); if (!el) return;
   const p = lsGet('idscan_pair_op');
-  if (!p) { el.innerHTML = '尚未配對副機'; $('pairBtn').textContent = '配對副機（給客人看的手機）'; return; }
+  if (!p) { el.innerHTML = '尚未配對'; $('pairBtn').textContent = '配對客人確認螢幕'; return; }
   const ago = dispSeen ? Math.round((Date.now() - dispSeen) / 60000) : null;
   el.innerHTML = ago === null ? '已配對，<a href="#" onclick="pingDisplay();return false">測試連線</a>'
-    : `<span class="ok">● 副機有回應</span>（${ago < 1 ? '剛剛' : ago + ' 分鐘前'}） <a href="#" onclick="pingDisplay();return false">測試連線</a>`;
+    : `<span class="ok">● 確認螢幕有回應</span>（${ago < 1 ? '剛剛' : ago + ' 分鐘前'}） <a href="#" onclick="pingDisplay();return false">測試連線</a>`;
   const late = [...pending.values()].filter(r => Date.now() - r.sentAt > 90000);
-  if (late.length) el.innerHTML += '<br><span class="bad">副機超過 90 秒沒回應，請看一下副機畫面</span>';
+  if (late.length) el.innerHTML += '<br><span class="bad">確認螢幕超過 90 秒沒回應，請看一下那支手機</span>';
   if (pending.size) el.innerHTML += `<br>等待客人確認：${[...pending.values()].map(r => esc(primaryName(r) || primaryNo(r))).join('、')}`;
   const fix = lsGet('idscan_fix');
   if (fix) el.innerHTML += `<br><a href="#" onclick="fillRecord(lsGet('idscan_fix'));lsSet('idscan_fix',null);opState();return false">⚠ 載入 ${esc(primaryName(fix) || primaryNo(fix))} 的資料來修改</a>`;
-  $('pairBtn').textContent = '重新配對副機';
+  $('pairBtn').textContent = '重新配對客人確認螢幕';
 }
 async function opStart() {
   const p = lsGet('idscan_pair_op'); if (!p) { opState(); return; }
@@ -99,7 +99,7 @@ async function pingDisplay() {
   $('pairState').textContent = '測試中…';
   const before = dispSeen;
   try { await opLink.send('ping', {}); } catch (e) { $('pairState').innerHTML = '<span class="bad">送不出去：' + esc(e.message) + '</span>'; return; }
-  setTimeout(() => { if (dispSeen === before) $('pairState').innerHTML = '<span class="bad">● 副機沒有回應</span>（副機畫面要開著、有網路） <a href="#" onclick="pingDisplay();return false">再試一次</a>'; }, 6000);
+  setTimeout(() => { if (dispSeen === before) $('pairState').innerHTML = '<span class="bad">● 確認螢幕沒有回應</span>（那支手機畫面要開著、有網路） <a href="#" onclick="pingDisplay();return false">再試一次</a>'; }, 6000);
 }
 function isPaired() { return !!(opLink && lsGet('idscan_pair_op')); }
 async function sendToDisplay(rec) {
@@ -110,10 +110,10 @@ async function sendToDisplay(rec) {
     await opLink.send('show', rec);
     pendingCrops.set(rec.id, crop);
     clearFields(); $('cardView').style.display = 'none';
-    $('status').textContent = '已送到副機，客人確認中…可以先掃下一位。';
+    $('status').textContent = '已送到確認螢幕，客人確認中…可以先掃下一位。';
   } catch (e) {
     pending.delete(rec.id);
-    $('status').textContent = '送不到副機（' + e.message + '），改用這支手機確認。';
+    $('status').textContent = '送不到確認螢幕（' + e.message + '），改用這支手機確認。';
     openLocalConfirm(rec);
   }
   opState();
@@ -129,7 +129,7 @@ function openPairModal() {
   dispSeen = 0; opStart();
 }
 function closePairModal() { $('pairModal').style.display = 'none'; }
-function unpair() { if (confirm('解除配對？副機需要重新掃 QR code。')) { lsSet('idscan_pair_op', null); opLink && opLink.es && opLink.es.close(); opLink = null; opState(); } }
+function unpair() { if (confirm('解除客人確認螢幕的配對？那支手機需要重新掃 QR code。')) { lsSet('idscan_pair_op', null); opLink && opLink.es && opLink.es.close(); opLink = null; opState(); } }
 function toast(msg, bad) {
   const t = $('toast'); t.textContent = msg; t.className = bad ? 'show bad' : 'show';
   clearTimeout(t._h); t._h = setTimeout(() => t.className = '', bad ? 6000 : 3000);
@@ -182,4 +182,4 @@ async function dispAnswer(ok) {
   } catch { alert('網路不穩，請再按一次 / Network error, please try again'); }
   dispAnswer.busy = false;
 }
-function dispUnpair() { if (confirm('解除這支副機的配對？')) { lsSet('idscan_pair_disp', null); location.reload(); } }
+function dispUnpair() { if (confirm('解除這支手機（客人確認螢幕）的配對？')) { lsSet('idscan_pair_disp', null); location.reload(); } }
