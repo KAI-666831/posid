@@ -138,6 +138,8 @@ function toast(msg, bad) {
 // ================= 副機端（客人看的畫面）=================
 let dispLink = null, dispCur = null;
 function displayMode() {
+  // 網址加 #unpair：強制解除（萬一畫面上的按鈕按不到）
+  if (/unpair/.test(location.hash)) { lsSet('idscan_pair_disp', null); history.replaceState(null, '', location.pathname); return null; }
   const m = location.hash.match(/display=([^.]+)\.([A-Za-z0-9_-]+)/);
   if (m) { lsSet('idscan_pair_disp', { t: m[1], k: m[2] }); history.replaceState(null, '', location.pathname); }
   return lsGet('idscan_pair_disp');
@@ -182,4 +184,8 @@ async function dispAnswer(ok) {
   } catch { alert('網路不穩，請再按一次 / Network error, please try again'); }
   dispAnswer.busy = false;
 }
-function dispUnpair() { if (confirm('解除這支手機（客人確認螢幕）的配對？')) { lsSet('idscan_pair_disp', null); location.reload(); } }
+function dispUnpair() {
+  if (!confirm('解除這支手機（客人確認螢幕）的配對？\n解除後會變回一般的 App（收銀／掃描證件）。')) return;
+  lsSet('idscan_pair_disp', null);
+  location.replace(location.pathname);     // 不帶 # 重新載入，避免又用舊的配對網址連回去
+}
