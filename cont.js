@@ -233,8 +233,27 @@ function renderRecent() {
   const r = frameRect();
   box.style.maxHeight = Math.max(80, r.y - 70 - box.offsetTop) + 'px';
   box.innerHTML = cont.recent.length
-    ? cont.recent.map((x, i) => `<div class="cr${i === 0 ? ' new' : ''}${(x.unsure || []).length ? ' un' : ''}"><span class="n">${(x.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(x))}</span><span class="b">${esc(x.birth || '')}</span><span class="i">${esc(shownNo(x))}</span></div>`).join('')
+    ? cont.recent.map((x, i) => `<div class="cr${i === 0 ? ' new' : ''}${(x.unsure || []).length ? ' un' : ''}"><span class="n">${(x.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(x))}</span><span class="b">${esc(x.birth || '')}</span><span class="i">${esc(shownNo(x))}</span>${x.rid ? `<button class="x" onclick="contUndo('${x.rid}')">刪</button>` : ''}</div>`).join('')
     : '<div class="cr empty">掃描成功的資料會顯示在這裡</div>';
+}
+
+// 掃錯了：刪掉這筆（不算人數），同一張卡留在框裡就會馬上重掃
+function contUndo(rid) {
+  if (!cont) return;
+  const x = cont.recent.find(y => y.rid === rid); if (!x) return;
+  if (!confirm(`刪除「${primaryName(x)}」這筆？\n刪掉後把證件放回框內就會重掃。`)) return;
+  const a = load(), i = a.findIndex(y => y.rid === rid);
+  if (i >= 0) { const rec = a[i]; delCrop(rid); a.splice(i, 1); store(a); render();
+    if (cont.grp && rec.grp === cont.grp.id && cont.got > 0) { cont.got--; cont.grp.got = cont.got; grpSave(); }
+    else if (rec.grp && grpById(rec.grp)) { const g = grpById(rec.grp); g.got = Math.max(0, (g.got || 0) - 1); if (g.state === 'done') g.partial = g.got < g.want; grpSave(); grpRender(); }   // 上一組（已經跳到下一組了）
+  }
+  cont.recent = cont.recent.filter(y => y.rid !== rid);
+  cont.count = Math.max(0, cont.count - 1);
+  if (cont.flip && cont.flip.rid === rid) cont.flip = null;
+  contTopUI(); renderRecent();
+  // 重新開始找證件：卡片還在框裡也會重讀
+  cont.state = 'seek'; cont.sig = null; cont.still = 0; cont.seenAt = 0; cont.cand = null; cont.tries = 0;
+  contUI(`已刪除「${primaryName(x)}」，把證件放進框內重掃`, '#f59e0b');
 }
 
 // 連續掃描畫面下方的類別按鈕：自（自動辨識）身 居 護 船 健 駕
