@@ -1,6 +1,6 @@
 // 程式本體：先抓網路最新版，沒網路才用快取
 // 模型與引擎由 app 自己存在 posid-models-v1（只清自己 posid- 開頭的快取，不動同網域其他 app），這裡不碰、更新時也不刪
-const CACHE = 'posid-v50', KEEP = [CACHE, 'posid-models-v1', 'posid-flags'];
+const CACHE = 'posid-v51', KEEP = [CACHE, 'posid-models-v1', 'posid-flags'];
 // 實驗：多執行緒加速。開啟時替每個回應加上隔離標頭（COOP/COEP），瀏覽器才允許辨識引擎用多個核心
 let isoP = null;
 const getIso = () => isoP || (isoP = caches.open('posid-flags').then(c => c.match('mt')).then(r => !!r).catch(() => false));

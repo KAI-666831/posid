@@ -221,6 +221,8 @@ async function recognizePhoto(photo0, prog, cancelled, rot, hint) {
     r = collectRecord(); r.sex = $('sex').value || inferSex(r);
   }
   readAllLines.last = lines;
+  // 核對用的照片：身分證用整張證件（之前只截推算出來的下半部，推算偏一點號碼就被切掉）
+  if (type === 'id') { try { lastCrop = await makeCrop(card, 'whole'); } catch {} }
   return { r, lines, box, photo, card };
 }
 
