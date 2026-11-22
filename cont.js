@@ -187,6 +187,8 @@ async function contTick() {
       const un = new Set(lastParse._back ? lastUnsure : lastUnsure.filter(k => c1.has(k) && !['idno', 'birth', 'ppno'].includes(k)));
       // 生日例外：重讀生日那一列有讀到別的日期（例如 3 月讀成 8 月），任何一次有就要標
       if (!lastParse._back && (c1.has('birth') || lastUnsure.includes('birth')) && r.type === 'id') un.add('birth');
+      // 號碼是「補救」來的（兩種讀法都沒讀到，靠猜一個字或從別處找）：兩次一樣也可能是同樣猜錯，一定要標
+      if (r._idGuess || (cont.cand && cont.cand._idGuess)) un.add(r.type === 'passport' ? 'ppno' : 'idno');
       if (Object.keys(nv).length > 1) un.add(EN_FIRST(r.type) ? 'nameEn' : 'name');   // 兩次讀到的名字不一樣 → 請核對
       if (!EN_FIRST(r.type)) r.name = pickName(nv) || r.name;
       cont.cand = null; cont.tries = 0;

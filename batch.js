@@ -161,11 +161,11 @@ async function recognizePhoto(photo0, prog, cancelled, rot, hint) {
     if (!validId(r.idno || '')) {
       const nl = lines.find(L => /^姓/.test(L.t.replace(/\s/g, '')) && L.x0 < 0.5);
       const c2 = findIds(lines).filter(x => !nl || (x.L.cy > nl.cy && x.L.cx > nl.cx)).sort((a, b) => (b.L.cx + b.L.cy) - (a.L.cx + a.L.cy))[0];
-      if (c2) { r.idno = c2.v; un.add('idno'); }
+      if (c2) { r.idno = c2.v; un.add('idno'); r._idGuess = true; }
       else {
         // 讀到像號碼的字但檢查碼不對（有一個字讀錯）：用模型的「第二選擇」逐字試，剛好只有一種改法對得上才用（標請核對）
         const shaped = lines.filter(L => /[A-Z][12A-D89]\d{8}/.test(L.t.replace(/\s/g, '').toUpperCase()) && (!nl || (L.cy > nl.cy && L.cx > nl.cx)));
-        for (const L of shaped) { const v = await fixIdByAlt(card, L); if (v) { r.idno = v; un.add('idno'); break; } }
+        for (const L of shaped) { const v = await fixIdByAlt(card, L); if (v) { r.idno = v; un.add('idno'); r._idGuess = true; break; } }
       }
     }
     // 還是沒有：直接讀卡片右下角號碼的位置（反光時偵測常漏掉這一塊）
@@ -183,7 +183,7 @@ async function recognizePhoto(photo0, prog, cancelled, rot, hint) {
       for (const [img, x0, y0, x1, y1] of tries) {
         const s = (await recRegion(img, x0, y0, x1, y1)).toUpperCase().replace(/[^A-Z0-9]/g, '');
         const m = s.match(/[A-Z][12]\d{8}/);
-        if (m && validId(m[0])) { r.idno = m[0]; un.add('idno'); break; }
+        if (m && validId(m[0])) { r.idno = m[0]; un.add('idno'); r._idGuess = true; break; }
       }
     }
     // 生日被拆成好幾段（「民國」「84」「10月27日」）：把出生那一列的字接起來再找
