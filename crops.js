@@ -62,7 +62,9 @@ function saveReview(next) {
   document.querySelectorAll('#rvFields input').forEach(inp => { r[inp.dataset.k] = inp.value.trim(); });
   if (r.idno) r.idno = r.idno.toUpperCase(); if (r.ppno) r.ppno = r.ppno.toUpperCase();
   r.unsure = []; r.checked = true;
+  const wasBad = r.custBad; delete r.custBad;   // 客人說有錯、你改好了：再送給客人確認一次
   store(a); render(); closeReview();
+  if (wasBad && r.rid) sendStoredToDisplay(r.rid);
   dbgFix(r, before);
   if (next) { const j = load().findIndex(x => (x.unsure || []).length); if (j >= 0) openReview(j); else toast('全部核對完成'); }
 }

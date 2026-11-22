@@ -204,6 +204,7 @@ async function contTick() {
         const rid = storeRecord(grpTag({ ...r, confirmed:false, unsure:[...un], mrz: !!lastParse._back }), lastCrop);
         cont.count++; if ($('contCount')) $('contCount').textContent = cont.count;
         cont.recent.unshift({ ...r, rid, unsure:[...un] }); renderRecent();
+        sendStoredToDisplay(rid);                  // 有配對客人確認螢幕：送過去排隊給客人確認（不等）
         if (dbgAllOn()) smallPhoto(card, 1400).then(img => dbgSave({ kind: 'pending', rid, img, got: dbgPick({ ...r, unsure:[...un] }), unsure: [...un], ocr: ocrText(readAllLines.last) }));   // 測試期間：成功的也留下來
         lastOcrMs = performance.now() - t0;
         if (r.type === 'arc' && !lastParse._back && un.size) {
@@ -238,7 +239,8 @@ function renderRecent() {
         const u = new Set(x.unsure || []);
         const wn = u.has('name') || u.has('nameEn'), wb = u.has('birth') || u.has('birthAd'), wi = u.has('idno') || u.has('ppno');
         const cell = (cls, w, v) => `<span class="${cls}${w ? ' w' : ''}">${w ? '⚠' : ''}${esc(v)}</span>`;
-        return `<div class="cr${i === 0 ? ' new' : ''}">${cell('n', wn, primaryName(x))}${cell('b', wb, x.birth || '')}${cell('i', wi, shownNo(x))}${x.rid ? `<button class="x" onclick="contUndo('${x.rid}')">刪</button>` : ''}</div>`;
+        const cs = x.custBad ? '<span style="color:#f87171">✗</span>' : x.confirmed ? '<span style="color:#86efac">✓</span>' : '';   // 客人確認結果
+        return `<div class="cr${i === 0 ? ' new' : ''}">${cs}${cell('n', wn, primaryName(x))}${cell('b', wb, x.birth || '')}${cell('i', wi, shownNo(x))}${x.rid ? `<button class="x" onclick="contUndo('${x.rid}')">刪</button>` : ''}</div>`;
       }).join('')
     : '<div class="cr empty">掃描成功的資料會顯示在這裡</div>';
 }
@@ -249,6 +251,7 @@ function contUndo(rid) {
   const x = cont.recent.find(y => y.rid === rid); if (!x) return;
   if (!confirm(`刪除「${primaryName(x)}」這筆？\n刪掉後把證件放回框內就會重掃。`)) return;
   const a = load(), i = a.findIndex(y => y.rid === rid);
+  cancelOnDisplay(rid);
   if (i >= 0) { const rec = a[i]; delCrop(rid); a.splice(i, 1); store(a); render();
     if (cont.grp && rec.grp === cont.grp.id && cont.got > 0) { cont.got--; cont.grp.got = cont.got; grpSave(); }
     else if (rec.grp && grpById(rec.grp)) { const g = grpById(rec.grp); g.got = Math.max(0, (g.got || 0) - 1); if (g.state === 'done') g.partial = g.got < g.want; grpSave(); grpRender(); }   // 上一組（已經跳到下一組了）

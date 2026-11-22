@@ -81,6 +81,7 @@ function opOnMsg(m) {
   if (m.kind === 'hello') { dispSeen = Date.now(); opState(); if ($('pairModal').style.display === 'block') closePairModal(); }
   if (m.kind === 'result') {
     dispSeen = Date.now();
+    if (m.data.rid) { custResult(m.data.rid, m.data.ok); return; }   // 連續掃描已存的那筆
     const rec = pending.get(m.data.id); if (!rec) return;
     pending.delete(m.data.id);
     if (m.data.ok) {
@@ -93,6 +94,22 @@ function opOnMsg(m) {
     }
     opState();
   }
+}
+// 連續掃描／相簿匯入：存好之後送到確認螢幕排隊，不等客人
+function sendStoredToDisplay(rid) {
+  if (!isPaired()) return;
+  const rec = load().find(x => x.rid === rid); if (!rec) return;
+  const d = { ...rec, id: rid }; delete d.unsure;
+  opLink.send('show', d).catch(() => toast(`送不到確認螢幕：${primaryName(rec) || primaryNo(rec)}`, true));
+}
+function cancelOnDisplay(rid) { if (isPaired()) opLink.send('cancel', { id: rid }).catch(() => {}); }
+function custResult(rid, ok) {
+  const a = load(), r = a.find(x => x.rid === rid); if (!r) return;
+  if (ok) { r.confirmed = true; r.confirmedAt = new Date().toISOString(); delete r.custBad; }
+  else { r.custBad = true; r.confirmed = false; }
+  store(a); render();
+  toast(ok ? `✓ ${primaryName(r) || primaryNo(r)} 客人已確認` : `✗ ${primaryName(r) || primaryNo(r)} 客人說資料有錯，名單上已標紅色，請修改`, !ok);
+  if (typeof cont !== 'undefined' && cont && cont.recent) { const x = cont.recent.find(y => y.rid === rid); if (x) { x.confirmed = r.confirmed; x.custBad = r.custBad; renderRecent(); } }
 }
 async function pingDisplay() {
   if (!opLink) return;
@@ -150,7 +167,7 @@ async function dispStart(p) {
   dispIdle('連線中… Connecting');
   let helloSent = false;   // 免費轉送每天有訊息上限，只在第一次連上時打招呼
   dispLink = new Link(p, 'disp', dispOnMsg, s => {
-    if (s === 'open') { if (!helloSent) { helloSent = true; dispLink.send('hello', {}).catch(()=>{}); } if (!dispCur) dispIdle(); }
+    if (s === 'open') { if (!helloSent) { helloSent = true; dispLink.send('hello', {}).catch(()=>{}); } if (!dispCur) dispShowNext(); }
     else if (!dispCur) dispIdle('網路中斷，重新連線中… Reconnecting');
   });
   await dispLink.open();
@@ -162,13 +179,33 @@ function dispIdle(msg) {
   $('dispBody').innerHTML = `<div class="d-idle">${msg ? esc(msg) : '歡迎<br><small>Welcome</small>'}</div>`;
   $('dispBtns').style.display = 'none';
 }
+// 排隊：連續掃描時一筆接一筆送來，客人一個一個確認（重新整理也不會不見）
+let dispQ = lsGet('idscan_disp_q') || [];
+const dispQSave = () => lsSet('idscan_disp_q', dispQ);
+function dispShowNext() {
+  if (dispCur) return;
+  const d = dispQ[0]; if (!d) { dispIdle(); return; }
+  dispCur = d;
+  const more = dispQ.length - 1;
+  $('dispBody').innerHTML = `<div class="cf-title">請確認您的資料<br><small>Please check your information</small></div>` + confirmRowsHtml(d)
+    + (more > 0 ? `<div style="text-align:center;color:#888;margin-top:14px;font-size:15px">後面還有 ${more} 位 / ${more} more</div>` : '');
+  $('dispBtns').style.display = 'flex';
+  $('disp').scrollTop = 0;
+}
 function dispOnMsg(m) {
   if (m.kind === 'ping') { dispLink.send('hello', {}).catch(()=>{}); return; }
   if (m.kind === 'show') {
-    dispCur = m.data;
-    $('dispBody').innerHTML = `<div class="cf-title">請確認您的資料<br><small>Please check your information</small></div>` + confirmRowsHtml(m.data);
-    $('dispBtns').style.display = 'flex';
-    $('disp').scrollTop = 0;
+    if (dispQ.some(x => x.id === m.data.id)) return;
+    dispQ.push(m.data);
+    // 照掃描時間排（網路先後可能顛倒）；正在看的那位不動
+    const rest = dispQ.filter(x => x !== dispCur).sort((x, y) => (x.t || '').localeCompare(y.t || ''));
+    dispQ = dispCur ? [dispCur, ...rest] : rest; dispQSave(); dispShowNext();
+    if (dispCur) { const more = dispQ.length - 1; const t = $('dispBody'); const old = t.querySelector('[data-more]'); if (old) old.remove();
+      if (more > 0 && !t.querySelector('.d-idle')) t.insertAdjacentHTML('beforeend', `<div data-more style="text-align:center;color:#888;margin-top:14px;font-size:15px">後面還有 ${more} 位 / ${more} more</div>`); }
+  }
+  if (m.kind === 'cancel') {                 // 工作人員刪掉了這筆
+    dispQ = dispQ.filter(x => x.id !== m.data.id); dispQSave();
+    if (dispCur && dispCur.id === m.data.id) { dispCur = null; dispShowNext(); }
   }
 }
 async function dispAnswer(ok) {
@@ -176,11 +213,11 @@ async function dispAnswer(ok) {
   dispAnswer.busy = true;
   const id = dispCur.id;
   try {
-    await dispLink.send('result', { id, ok });
-    dispCur = null;
+    await dispLink.send('result', { id, ok, rid: dispCur.rid });
+    dispCur = null; dispQ = dispQ.filter(x => x.id !== id); dispQSave();
     $('dispBtns').style.display = 'none';
     $('dispBody').innerHTML = `<div class="d-idle">${ok ? '✓ 謝謝！<br><small>Thank you</small>' : '已通知工作人員修改<br><small>Staff will correct it</small>'}</div>`;
-    setTimeout(() => { if (!dispCur) dispIdle(); }, 2500);
+    setTimeout(() => { if (!dispCur) dispShowNext(); }, dispQ.length ? 1200 : 2500);
   } catch { alert('網路不穩，請再按一次 / Network error, please try again'); }
   dispAnswer.busy = false;
 }

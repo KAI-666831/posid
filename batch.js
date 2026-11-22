@@ -261,6 +261,7 @@ async function batchOne(it, b) {
   dbgSave({ kind: 'pending', rid, img: await smallPhoto(photo, dbgAllOn() ? 1400 : 1600), got: dbgPick(rec), unsure: rec.unsure, ocr: ocrText(lines) });   // 之後在核對畫面改了才會變成「修正」紀錄
   clearFields(); $('cardView').style.display = 'none';
   it.st = 'ok'; it.msg = `${(rec.unsure || []).length ? '⚠ ' : '✓ '}${primaryName(r)}　${r.birth || ''}　${shownNo(r)}`;
+  sendStoredToDisplay(rid);
   it.rid = rid; it.flip = r.type === 'arc' && !lastParse._back && (rec.unsure || []).length > 0;   // 居留證正面有 ⚠：可以補拍背面更正
   if (g) {
     g.got = (g.got || 0) + 1; grpSave();
