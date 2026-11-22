@@ -152,12 +152,16 @@
   #contRecent .cr { display:flex; gap:8px; align-items:baseline; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.15); font-size:16px; }
   #contRecent .cr:last-child { border-bottom:0; }
   #contRecent .cr.new { color:#86efac; font-weight:700; }
-  #contRecent .cr.un { color:#fde047; }
+  #contRecent .cr.un { }
   #contRecent .cr.empty { color:#bbb; font-size:14px; justify-content:center; }
   #contRecent .n { flex:1.2; word-break:break-word; }
   #contRecent .b { flex:1; text-align:center; } #contRecent .i { flex:1.3; text-align:right; font-variant-numeric:tabular-nums; }
   #contRecent .cr { align-items:center; }
-  #contRecent .x { flex:0 0 auto; margin-left:6px; padding:6px 10px; font-size:14px; font-weight:700; color:#fff; background:#b91c1c; border:0; border-radius:8px; }
+  #contRecent .x { display:inline-block; width:auto; flex:0 0 auto; margin:0 0 0 8px; padding:3px 8px; font-size:13px; font-weight:600; line-height:1.3;
+                   color:#fca5a5; background:transparent; border:1px solid rgba(252,165,165,.6); border-radius:6px; }
+  #contRecent .w { color:#fde047; }   /* 有問題的那一格 */
+  #contRecent .b, #contRecent .i { white-space:nowrap; flex:0 0 auto; } #contRecent .i { font-size:14px; } #contRecent .b { font-size:14px; }
+  #contRecent .n { flex:1 1 0; min-width:60px; font-size:15px; word-break:normal; overflow-wrap:break-word; } #contRecent .cr { gap:6px; } #contRecent .x { margin-left:2px; padding:3px 6px; }
   #contTypes { position:absolute; left:16px; right:16px; display:none; gap:6px; }
   #contTypes button { flex:1; padding:10px 0; font-size:18px; font-weight:700; background:rgba(0,0,0,.6); color:#fff; border:1.5px solid rgba(255,255,255,.6); border-radius:10px; }
   #contTypes button.on { background:#2563eb; border-color:#2563eb; }
@@ -199,7 +203,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/23-b</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/23-d</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -392,6 +396,8 @@ const ALL_F = ['name','nameEn','sex','birth','idno','ppno','nat','docno'];
 // 護照、居留證以英文姓名＋護照號碼為主；其他證件以中文姓名＋身分證號為主
 const EN_FIRST = t => t === 'passport' || t === 'arc';
 const primaryName = r => (EN_FIRST(r.type) ? (r.nameEn || r.name) : (r.name || r.nameEn)) || '';
+// 這一筆的哪一格要核對（⚠ 標在那一格，不是整列）
+const uw = (r, ...ks) => ks.some(k => (r.unsure || []).includes(k));
 const primaryNo   = r => (EN_FIRST(r.type) ? (r.ppno || r.idno) : (r.idno || r.ppno)) || '';
 // 畫面上顯示的號碼後面加（護）（統）：護照號碼、外籍人士的統一證號（第 2 碼是 8 9 A B C D）。台灣身分證不加。CSV 放在「備註」欄。
 const noTag = r => { const n = primaryNo(r); if (!n) return ''; if (n === r.ppno) return '（護）'; return (r.type === 'arc' || /^[A-Z][89A-D]/.test(n)) ? '（統）' : ''; };
@@ -979,7 +985,7 @@ function render() {
   $('unsureBar').style.display = nUn ? 'block' : 'none'; $('unsureN').textContent = nUn; if ($('paxCount')) $('paxCount').textContent = a.length;
   const bad = conflictSet(a);
   $('list').tBodies[0].innerHTML = a.map((r,i) =>
-    `<tr><td>${esc(TYPES[r.type||'id']?.label||'')}</td><td onclick="openReview(${i})" class="${(r.unsure || []).length ? 'unsure-cell' : ''}" style="text-decoration:underline dotted;cursor:pointer">${bad.has(i) ? '<span class="bad">⚠ </span>' : ''}${(r.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(r))}${r.grp && grpById(r.grp) ? ` <small style="color:var(--muted)">${grpLabel(grpById(r.grp))}</small>` : ''}</td><td>${esc(r.birth)}</td><td>${esc(shownNo(r))}</td><td>${r.confirmed ? '<span class="ck">✓</span>' : ''}</td><td><a href="#" onclick="del(${i});return false">刪</a></td></tr>`).join('');
+    `<tr><td>${esc(TYPES[r.type||'id']?.label||'')}</td><td onclick="openReview(${i})" class="${uw(r, 'name', 'nameEn') ? 'unsure-cell' : ''}" style="text-decoration:underline dotted;cursor:pointer">${bad.has(i) ? '<span class="bad">⚠ </span>' : ''}${uw(r, 'name', 'nameEn') ? '⚠ ' : ''}${esc(primaryName(r))}${r.grp && grpById(r.grp) ? ` <small style="color:var(--muted)">${grpLabel(grpById(r.grp))}</small>` : ''}</td><td class="${uw(r, 'birth', 'birthAd') ? 'unsure-cell' : ''}" onclick="openReview(${i})">${uw(r, 'birth', 'birthAd') ? '⚠ ' : ''}${esc(r.birth)}</td><td class="${uw(r, 'idno', 'ppno') ? 'unsure-cell' : ''}" onclick="openReview(${i})">${uw(r, 'idno', 'ppno') ? '⚠ ' : ''}${esc(shownNo(r))}</td><td>${r.confirmed ? '<span class="ck">✓</span>' : ''}</td><td><a href="#" onclick="del(${i});return false">刪</a></td></tr>`).join('');
 }
 // ---------- 給客人確認 ----------
 const EN_LABEL = { name:'Name', nameEn:'Name', birth:'Date of birth', idno:'ID No.', ppno:'Passport No.', nat:'Nationality', docno:'Book No.' };

@@ -233,7 +233,13 @@ function renderRecent() {
   const r = frameRect();
   box.style.maxHeight = Math.max(80, r.y - 70 - box.offsetTop) + 'px';
   box.innerHTML = cont.recent.length
-    ? cont.recent.map((x, i) => `<div class="cr${i === 0 ? ' new' : ''}${(x.unsure || []).length ? ' un' : ''}"><span class="n">${(x.unsure || []).length ? '⚠ ' : ''}${esc(primaryName(x))}</span><span class="b">${esc(x.birth || '')}</span><span class="i">${esc(shownNo(x))}</span>${x.rid ? `<button class="x" onclick="contUndo('${x.rid}')">刪</button>` : ''}</div>`).join('')
+    ? cont.recent.map((x, i) => {
+        // ⚠ 只標在有問題的那一格（名字／生日／號碼），不是整列都標
+        const u = new Set(x.unsure || []);
+        const wn = u.has('name') || u.has('nameEn'), wb = u.has('birth') || u.has('birthAd'), wi = u.has('idno') || u.has('ppno');
+        const cell = (cls, w, v) => `<span class="${cls}${w ? ' w' : ''}">${w ? '⚠' : ''}${esc(v)}</span>`;
+        return `<div class="cr${i === 0 ? ' new' : ''}">${cell('n', wn, primaryName(x))}${cell('b', wb, x.birth || '')}${cell('i', wi, shownNo(x))}${x.rid ? `<button class="x" onclick="contUndo('${x.rid}')">刪</button>` : ''}</div>`;
+      }).join('')
     : '<div class="cr empty">掃描成功的資料會顯示在這裡</div>';
 }
 
