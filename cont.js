@@ -185,6 +185,8 @@ async function contTick() {
       // 兩次讀到的號碼、生日一樣（上面已經比過）→ 不用再標；其他欄位兩次都標才標（只有一次標，多半是那一格畫面晃到）
       const c1 = new Set(cont.candUnsure || lastUnsure);
       const un = new Set(lastParse._back ? lastUnsure : lastUnsure.filter(k => c1.has(k) && !['idno', 'birth', 'ppno'].includes(k)));
+      // 生日例外：重讀生日那一列有讀到別的日期（例如 3 月讀成 8 月），任何一次有就要標
+      if (!lastParse._back && (c1.has('birth') || lastUnsure.includes('birth')) && r.type === 'id') un.add('birth');
       if (Object.keys(nv).length > 1) un.add(EN_FIRST(r.type) ? 'nameEn' : 'name');   // 兩次讀到的名字不一樣 → 請核對
       if (!EN_FIRST(r.type)) r.name = pickName(nv) || r.name;
       cont.cand = null; cont.tries = 0;

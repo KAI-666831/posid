@@ -200,6 +200,18 @@ async function recognizePhoto(photo0, prog, cancelled, rot, hint) {
         }
       }
     }
+    // 生日沒有檢查碼（3↔8、6↔9 讀錯也看不出來）：生日那一列換幾種裁法重讀，只要有一次讀到不一樣的日期就標請核對
+    if (cb && birthOk('id', r.birth)) {
+      const seen = new Map(); seen.set(r.birth, 1);
+      for (const [x0, y0, y1] of [[0.14, 0.65, 0.77], [0.16, 0.66, 0.76], [0.13, 0.64, 0.79], [0.15, 0.67, 0.75], [0.12, 0.66, 0.78], [0.17, 0.65, 0.76]]) {
+        const t = (await recRegion(idCard, x0, y0, 0.68, y1)).replace(/\s/g, '');
+        const m = t.match(/民[國国]?(\d{2,3})\D{0,2}年\D{0,2}(\d{1,2})\D{0,2}月\D{0,2}(\d{1,2})/);
+        if (!m) continue;
+        const v = `${+m[1]}/${pad2(m[2])}/${pad2(m[3])}`;
+        if (birthOk('id', v)) seen.set(v, (seen.get(v) || 0) + 1);
+      }
+      if (seen.size > 1) un.add('birth');
+    }
     if (r.birth) r.birthAd = rocToAd(r.birth).replace('西元 ', '');
     r.sex = $('sex').value || inferSex(r);
     if (!cb) ['name', 'birth', 'idno'].forEach(k => un.add(k));   // 找不到卡片範圍：全部標請核對
