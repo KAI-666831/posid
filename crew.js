@@ -137,7 +137,7 @@ function renderManifestCanvas() {
   // 直接畫成 A4 直式比例，列高依人數拉高到填滿整頁（印出來不會下面空一大片）
   const W = 2000, cols = [0.07, 0.22, 0.11, 0.22, 0.24, 0.14], X0 = 50, TW = W - 100, TOP = 190, BOT = 40;
   const A4H = Math.round(W * 297 / 210);
-  const RH = Math.max(52, Math.floor((A4H - TOP - BOT) / (rows.length + 1)));
+  const RH = Math.max(38, Math.floor((A4H - TOP - BOT) / (rows.length + 1)));   // 人多就縮列高（約 65 列內都塞得進一張 A4）
   const H = Math.max(A4H, TOP + RH * (rows.length + 1) + BOT);
   const FS = Math.round(Math.min(58, RH * 0.5));          // 字體跟著列高放大
   const c = document.createElement('canvas'); c.width = W; c.height = H;
