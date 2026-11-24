@@ -16,6 +16,7 @@ function backSave() {
 }
 const bp2 = n => String(n).padStart(2, '0');
 function backInit() {
+  sigInit(); sigStateUI();
   const c = backCfg();
   document.querySelectorAll('#backForm [data-b]').forEach(i => { i.value = c[i.dataset.b] || ''; });
   // 出海：今天、現在（取整 10 分）；返港：預設同一天 18:00
@@ -26,6 +27,38 @@ function backInit() {
   if (!$('bkInT').value) $('bkInT').value = '18:00';
 }
 const bkDt = (dv, tv) => { const [y, m, d] = (dv || '').split('-').map(Number), [h, mi] = (tv || '').split(':').map(Number); return { y: y ? y - 1911 : '', m: m || '', d: d || '', h: isNaN(h) ? '' : h, mi: isNaN(mi) ? '' : bp2(mi) }; };
+
+// ---------- 船長手寫簽名（簽一次存在手機，背面自動印上去）----------
+const SIG_KEY = 'posid_sig';
+let sigImg = null;
+function sigLoad() { try { const d = localStorage.getItem(SIG_KEY); if (d) { sigImg = new Image(); sigImg.src = d; } else sigImg = null; } catch {} sigStateUI(); }
+function sigStateUI() { const el = document.getElementById('sigState'); if (el) el.textContent = localStorage.getItem(SIG_KEY) ? '✓ 已存簽名，背面會自動印上去' : '還沒存簽名（背面會留空白讓你手寫）'; }
+let sigDirty = false;
+function sigInit() {
+  const c = $('sigPad'); if (!c || c._init) return; c._init = true;
+  const g = c.getContext('2d'); g.lineWidth = 7; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#000';
+  let down = false;
+  const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+  c.addEventListener('pointerdown', e => { down = true; c.setPointerCapture(e.pointerId); g.beginPath(); g.moveTo(...pos(e)); sigDirty = true; });
+  c.addEventListener('pointermove', e => { if (!down) return; g.lineTo(...pos(e)); g.stroke(); });
+  c.addEventListener('pointerup', () => { down = false; });
+  // 已存的簽名先畫上去
+  if (sigImg) { const draw = () => g.drawImage(sigImg, 0, 0, c.width, c.height); sigImg.complete ? draw() : (sigImg.onload = draw); }
+}
+function sigClear() { const c = $('sigPad'); c.getContext('2d').clearRect(0, 0, c.width, c.height); sigDirty = false; try { localStorage.removeItem(SIG_KEY); } catch {} sigImg = null; sigStateUI(); }
+function sigSave() {
+  const c = $('sigPad');
+  // 裁掉空白邊
+  const g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 <= x0) { alert('框裡還沒簽名'); return; }
+  const pad = 10, w = x1 - x0 + pad * 2, h = y1 - y0 + pad * 2, o = document.createElement('canvas'); o.width = w; o.height = h;
+  o.getContext('2d').drawImage(c, x0 - pad, y0 - pad, w, h, 0, 0, w, h);
+  try { localStorage.setItem(SIG_KEY, o.toDataURL('image/png')); } catch { alert('存不進去'); return; }
+  sigLoad(); toast('簽名已儲存');
+}
+sigLoad();
 
 function renderBackCanvas() {
   backSave();
@@ -97,6 +130,11 @@ function renderBackCanvas() {
   y = bottom + 120;
   text('船長簽名：', X0 + 20, y, 58);
   line(X0 + 330, y + 42, X0 + 1200, y + 42, 3);
+  // 存過的手寫簽名：印在線上
+  if (sigImg && sigImg.complete && sigImg.naturalWidth) {
+    const hh = 150, ww = Math.min(860, sigImg.naturalWidth * hh / sigImg.naturalHeight);
+    g.drawImage(sigImg, X0 + 350, y + 40 - hh + 10, ww, hh);
+  }
   return { canvas: cv };
 }
 

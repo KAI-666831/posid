@@ -221,7 +221,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/25-b</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/25-c</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -313,6 +313,10 @@
       <div class="bk-row"><span>緊急聯絡人</span><input data-b="ecName"><span>關係</span><input data-b="ecRel"></div>
       <div class="bk-row"><span>電話</span><input data-b="ecTel"></div>
       <div class="bk-row"><span>地址</span><input data-b="ecAddr"></div>
+      <div style="margin-top:12px;font-size:14px">船長簽名：用手指在下面框裡簽一次，之後每張都會印上去</div>
+      <canvas id="sigPad" width="900" height="260" style="width:100%;height:auto;border:1px dashed #999;border-radius:8px;background:#fafafa;touch-action:none;margin-top:6px"></canvas>
+      <div style="display:flex;gap:8px;margin-top:6px"><button class="sec" onclick="sigClear()">清除重簽</button><button class="sec" onclick="sigSave()">儲存簽名</button></div>
+      <div id="sigState" style="font-size:13px;color:#555;margin-top:4px"></div>
     </details>
     <div style="display:flex;gap:8px;margin-top:10px"><button class="sec" onclick="backPreview()">預覽背面</button><button class="sec" onclick="backPdf()">只印背面 PDF</button></div>
     <img id="bkPrev" style="display:none;width:100%;margin-top:10px;border:1px solid #ccc">
