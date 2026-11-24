@@ -126,6 +126,7 @@ function openManifest() {
   h += `</tbody></table>`;
   $('mfPage').innerHTML = h;
   $('manifest').style.display = 'block'; $('manifest').scrollTop = 0;
+  backInit();
 }
 function closeManifest() { $('manifest').style.display = 'none'; }
 

@@ -39,6 +39,12 @@
   #manifest { position:fixed; inset:0; z-index:25; background:#fff; color:#000; display:none; overflow:auto; }
   .mf-bar { position:sticky; top:0; display:flex; gap:8px; padding:calc(env(safe-area-inset-top) + 8px) 10px 8px; background:#eee; }
   .mf-bar button { flex:1; padding:12px 0; font-size:15px; }
+  .bk-form { max-width:820px; margin:16px auto 40px; padding:14px; background:#fff; color:#000; border-radius:12px; }
+  .bk-form .bk-row { display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  .bk-form .bk-row span { font-size:14px; white-space:nowrap; }
+  .bk-form .bk-row input { flex:1; min-width:80px; padding:8px; font-size:16px; border:1px solid #bbb; border-radius:8px; background:#fff; color:#000; }
+  .bk-form summary { margin-top:12px; font-size:14px; color:#444; }
+  .bk-form button { flex:1; padding:12px 0; font-size:15px; }
   #mfPage { padding:24px 18px; font-family:"PingFang TC","Noto Serif TC",serif; }
   .mf-title { text-align:center; font-size:22px; margin-bottom:8px; }
   table.mf { width:100%; border-collapse:collapse; border:2px solid #000; font-size:15px; }
@@ -215,7 +221,7 @@
 </div>
 
 <h1>身分證辨識</h1>
-<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/25-a</span></div>
+<div class="sub">照片只在這支手機上辨識，不會上傳任何伺服器。 <span style="opacity:.6">收銀＋證件 版本 11/25-b</span></div>
 
 <div class="card">
   <div id="types" class="seg">
@@ -287,10 +293,30 @@
 <div id="manifest">
   <div class="mf-bar">
     <button class="sec" onclick="closeManifest()">關閉</button>
-    <button onclick="manifestPdf()">PDF（列印／分享）</button>
-    <button onclick="manifestImage()">存成圖片</button>
+    <button onclick="manifestPdf2()">PDF（正面＋背面）</button>
+    <button onclick="manifestImage()">正面存成圖片</button>
   </div>
   <div id="mfPage"></div>
+  <div id="backForm" class="bk-form">
+    <b style="font-size:17px">背面：出港安檢表</b>
+    <div class="bk-row"><span>出海</span><input type="date" id="bkOutD"><input type="time" id="bkOutT"></div>
+    <div class="bk-row"><span>預計返港</span><input type="date" id="bkInD"><input type="time" id="bkInT"></div>
+    <div class="bk-row"><span>經</span><input data-b="via" placeholder="（可空白）"><span>前往</span><input data-b="to" placeholder="（可空白）"></div>
+    <details><summary>固定資料（船、設備、執照、緊急聯絡；很少改）</summary>
+      <div class="bk-row"><span>船名</span><input data-b="ship"></div>
+      <div class="bk-row"><span>總噸位</span><input data-b="ton"><span>載客人數</span><input data-b="cap"></div>
+      <div class="bk-row"><span>MMSI</span><input data-b="mmsi"></div>
+      <div class="bk-row"><span>救生衣</span><input data-b="vest"><span>救生圈</span><input data-b="ring"><span>信號彈</span><input data-b="flare"></div>
+      <div class="bk-row"><span>幹部</span><input data-b="officer"><span>船員</span><input data-b="crewN"></div>
+      <div class="bk-row"><span>執照效期</span><input data-b="licFrom"><span>至</span><input data-b="licTo"></div>
+      <div class="bk-row"><span>活動項目</span><input data-b="item"></div>
+      <div class="bk-row"><span>緊急聯絡人</span><input data-b="ecName"><span>關係</span><input data-b="ecRel"></div>
+      <div class="bk-row"><span>電話</span><input data-b="ecTel"></div>
+      <div class="bk-row"><span>地址</span><input data-b="ecAddr"></div>
+    </details>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="sec" onclick="backPreview()">預覽背面</button><button class="sec" onclick="backPdf()">只印背面 PDF</button></div>
+    <img id="bkPrev" style="display:none;width:100%;margin-top:10px;border:1px solid #ccc">
+  </div>
 </div>
 
 
@@ -372,6 +398,7 @@
 <script src="qrcode.js"></script>
 <script src="pair.js"></script>
 <script src="crew.js"></script>
+<script src="back.js"></script>
 <script src="groups.js"></script>
 <script src="cont.js"></script>
 <script src="duo.js"></script>
