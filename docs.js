@@ -243,7 +243,10 @@ async function parseArc(lines, card) {
       const u = t.toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!isEnName(u) || u.replace(/ /g, '').length < 4) return;
       const k = u.replace(/ /g, ''), v = votes.get(k) || { n: 0, p: 0, txt: u };
-      v.n++; if (p > v.p) { v.p = p; if (u.includes(' ') || !v.txt.includes(' ')) v.txt = u; } votes.set(k, v);
+      v.n++; if (p > v.p) v.p = p;
+      // 同樣的字母，保留「空格最多」的寫法（字距寬的名字常被讀成黏在一起：DELROSARIO、YUSRIZALNUGRAHA）
+      if (u.split(' ').length > v.txt.split(' ').length) v.txt = u;
+      votes.set(k, v);
     };
     add(r.nameEn, rowP);
     for (const [k, dy] of [[0.65, 0], [0.65, -0.12], [0.65, 0.12], [0.8, 0], [0.55, 0], [0.75, -0.08], [0.75, 0.08]]) for (const x of [xl, xl + 0.02]) {
